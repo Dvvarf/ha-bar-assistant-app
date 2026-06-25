@@ -1,0 +1,357 @@
+# syntax=docker/dockerfile:1
+###############################################################################
+# Home Assistant add-on: Bar Assistant stack
+# (Meilisearch + Bar Assistant API + Salt Rim, all supervised by s6-overlay)
+#
+# Everything is served on a single published port via the Salt Rim nginx:
+#   :2118/         -> salt-rim (web client)        <- published
+#   :2118/bar/     -> bar-assistant API  (proxy -> 127.0.0.1:8081, internal)
+#   :2118/search/  -> meilisearch        (proxy -> 127.0.0.1:7700, internal)
+# Only :2118 is exposed; the API and Meilisearch are reached through subfolders.
+#
+# All persistent data lives under /data (the HA-persistent volume):
+#   /data/meilisearch                 Meilisearch DB
+#   /data/bar-assistant/              Bar Assistant DB + uploads/exports/temp
+#
+# Base image: the Alpine HA base can't host the Debian/PHP Bar Assistant stack,
+# so we build on the Bar Assistant image (which already ships s6-overlay) via
+# the ARG BUILD_FROM default below.
+###############################################################################
+
+# BUILD_FROM must be declared before the first FROM so it is a global build
+# arg usable in a FROM line (HA's builder passes it in; the default is used
+# when building standalone). Declared after a FROM it would be stage-scoped
+# and resolve blank in `FROM ${BUILD_FROM}`.
+#
+# Upstreams are pinned to their MINOR tag (server:5.15, salt-rim:4.15,
+# meilisearch:v1.15), not the floating major (:v5 / :v4). This still tracks
+# patch releases automatically, but fixes the major.minor at build time so the
+# add-on version can honestly mirror it -- the add-on version is
+# <BA_major>.<BA_minor>.<SR_major>.<SR_minor>.<pkg> (see "Versioning" in CLAUDE.md).
+# When either upstream's major/minor moves, bump the matching tag here AND the
+# matching field in the version.
+ARG BUILD_FROM=barassistant/server:5.15
+
+FROM getmeili/meilisearch:v1.15 AS meili
+FROM barassistant/salt-rim:4.15 AS saltrim
+
+FROM ${BUILD_FROM}
+
+# Run as root so the add-on can manage /data and write the s6 container
+# environment; individual services drop to www-data where appropriate.
+USER root
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl gettext-base jq \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Meilisearch binary (internal only). DB path lives under /data.
+#
+# The official meilisearch image is Alpine, so its binary is musl-linked
+# (interpreter /lib/ld-musl-*.so.1) while this base is Debian/glibc. Copying
+# the binary alone fails to exec ("No such file or directory" = missing musl
+# loader). We bring its two musl runtime deps along: the loader (also musl
+# libc) and the musl build of libgcc_s. They sit at musl-specific paths and
+# do not collide with glibc (whose libgcc lives under /lib/<triplet>/), so the
+# Debian PHP/nginx stack is unaffected. The ld-musl-* glob keeps it multi-arch.
+# ---------------------------------------------------------------------------
+COPY --from=meili /bin/meilisearch       /usr/local/bin/meilisearch
+COPY --from=meili /lib/ld-musl-*.so.1    /lib/
+COPY --from=meili /usr/lib/libgcc_s.so.1 /usr/lib/libgcc_s.so.1
+
+# ---------------------------------------------------------------------------
+# Salt Rim static SPA + its own nginx config (served on :2118). The
+# /meilisearch/ proxy lets the browser reach Meilisearch without publishing it.
+# ---------------------------------------------------------------------------
+COPY --from=saltrim /var/www/html       /var/www/salt-rim
+COPY --from=saltrim /var/www/config.js  /var/www/salt-rim/config.tmpl.js
+RUN chown -R www-data:www-data /var/www/salt-rim
+
+RUN cat > /etc/nginx-salt-rim.conf <<'SRCONF'
+worker_processes auto;
+daemon off;
+pid /tmp/sr-nginx/sr-nginx.pid;
+# Use the literal `stderr` target (the already-open fd 2), not /dev/stderr:
+# this nginx runs as www-data, which cannot reopen root's /dev/stderr.
+error_log stderr error;
+events {}
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    access_log off;
+
+    client_body_temp_path /tmp/sr-nginx/body;
+    proxy_temp_path       /tmp/sr-nginx/proxy;
+    fastcgi_temp_path     /tmp/sr-nginx/fastcgi;
+    uwsgi_temp_path       /tmp/sr-nginx/uwsgi;
+    scgi_temp_path        /tmp/sr-nginx/scgi;
+    client_max_body_size  100M;
+
+    server {
+        listen 2118 default_server;
+        listen [::]:2118 default_server;
+        server_name _;
+        root /var/www/salt-rim;
+
+        # Salt Rim web client (static SPA shipped in this image).
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        # Bar Assistant API under /bar/. The trailing slash on proxy_pass
+        # strips the /bar prefix (/bar/api/... -> /api/...), as the Bar
+        # Assistant docs require. Set API_URL=APP_URL=<host>:2118/bar
+        location = /bar { return 301 /bar/; }
+        location /bar/ {
+            proxy_pass http://127.0.0.1:8081/;
+            proxy_http_version 1.1;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Meilisearch under /search/ (prefix stripped the same way).
+        # The browser talks to it here; it is never published directly.
+        # Set MEILISEARCH_URL=<host>:2118/search
+        location /search/ {
+            proxy_pass http://127.0.0.1:7700/;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+        }
+    }
+}
+SRCONF
+
+# ---------------------------------------------------------------------------
+# Move the Bar Assistant nginx vhost off the base default :8080 to :8081, so it
+# stays clearly separated from Salt Rim (which serves the published :2118) and
+# is only reachable internally. The base (serversideup/php) renders its nginx
+# config from .template files at boot, with the listen port taken from
+# ${NGINX_HTTP_PORT} (default 8080) -- so editing the rendered /etc/nginx files
+# at build time is undone on
+# every start. Setting the env var is the supported knob; the base's own nginx
+# healthcheck reads the same var, so it follows to 8081 too.
+# ---------------------------------------------------------------------------
+ENV NGINX_HTTP_PORT=8081
+
+# ---------------------------------------------------------------------------
+# Configuration defaults. These are BUILD-TIME defaults only; the actual
+# runtime values are resolved by ba-prep from the HA add-on options (see below).
+#
+# Important: the base sets S6_KEEP_ENV=1, so `with-contenv` is a pass-through
+# that never imports /run/s6/container_environment -- services inherit the
+# Docker ENV instead, and Laravel's dotenv won't override an already-set env
+# var. So the user-overridable keys the API consumes (MEILISEARCH_KEY, APP_URL,
+# ALLOW_REGISTRATION) are deliberately NOT set as ENV here: that lets ba-prep
+# write them into Laravel's .env where they take effect. The remaining keys are
+# internal/fixed (or only consumed by our own meilisearch/salt-rim services,
+# which source ba-prep's resolved env file directly).
+# ---------------------------------------------------------------------------
+ENV MEILI_DB_PATH=/data/meilisearch \
+    MEILI_HTTP_ADDR=127.0.0.1:7700 \
+    MEILI_NO_ANALYTICS=true \
+    MEILI_ENV=production \
+    MEILI_MASTER_KEY=please-change-me-min-16-bytes
+ENV MEILISEARCH_HOST=http://127.0.0.1:7700 \
+    DB_CONNECTION=sqlite \
+    DB_DATABASE=/data/bar-assistant/database.ba3.sqlite \
+    CACHE_DRIVER=file \
+    SESSION_DRIVER=file
+ENV API_URL=http://homeassistant.local:2118/bar \
+    MEILISEARCH_URL=http://homeassistant.local:2118/search \
+    DEFAULT_LOCALE=en-US \
+    MAILS_ENABLED=false
+
+# ---------------------------------------------------------------------------
+# Shared prep script: create /data layout, relocate Bar Assistant storage into
+# /data, and resolve HA add-on options into the places each consumer reads.
+#
+# Because S6_KEEP_ENV=1 makes /run/s6/container_environment a dead end, options
+# are propagated two ways: (1) a sourceable /run/bar-assistant.env that our own
+# meilisearch + salt-rim services read, and (2) Laravel's .env, which the base's
+# `config:cache` bakes into the API's effective config.
+# ---------------------------------------------------------------------------
+RUN cat > /usr/local/bin/ba-prep.sh <<'PREP'
+#!/usr/bin/env bash
+set -u
+mkdir -p /data/meilisearch \
+         /data/bar-assistant/uploads \
+         /data/bar-assistant/exports \
+         /data/bar-assistant/temp
+chown -R www-data:www-data /data/meilisearch /data/bar-assistant 2>/dev/null || true
+
+# The storage path is an inherited Docker VOLUME (can't be replaced wholesale),
+# so symlink the data-bearing subdirs into /data instead. The DB itself is
+# relocated via DB_DATABASE. Symlinks are recreated every boot (idempotent).
+STORE=/var/www/cocktails/storage/bar-assistant
+mkdir -p "$STORE" 2>/dev/null || true
+for sub in uploads exports temp; do
+    link="$STORE/$sub"
+    if [ ! -L "$link" ]; then
+        if [ -d "$link" ] && [ -n "$(ls -A "$link" 2>/dev/null)" ] \
+           && [ -z "$(ls -A "/data/bar-assistant/$sub" 2>/dev/null)" ]; then
+            cp -a "$link/." "/data/bar-assistant/$sub/" 2>/dev/null || true
+        fi
+        rm -rf "$link" 2>/dev/null || true
+        ln -sfn "/data/bar-assistant/$sub" "$link"
+    fi
+done
+chown -h www-data:www-data "$STORE/uploads" "$STORE/exports" "$STORE/temp" 2>/dev/null || true
+
+# Uploaded images are served as static files by the Bar Assistant nginx, whose
+# workers run as the `nginx` user (compile-time default, uid 997) -- NOT as the
+# www-data owner of the files. The base image ships storage/bar-assistant as
+# 0700 www-data, so the nginx user cannot traverse it to follow the public
+# `uploads` symlink -> open() EACCES -> HTTP 403 on every image. The uploads are
+# public web assets, so make the dir traversable. (The sensitive DB lives in
+# /data, not here, and nothing under it is web-exposed except the uploads link.)
+chmod 0755 "$STORE" 2>/dev/null || true
+
+# Resolve each value: HA option if set, else the image ENV default.
+OPT=/data/options.json
+opt() {  # opt KEY -> option value (or empty). `has()` so boolean false survives,
+         # unlike `.[k] // empty`, which jq treats false as empty.
+    [ -r "$OPT" ] || return 0
+    command -v jq >/dev/null 2>&1 || return 0
+    jq -r --arg k "$1" 'if has($k) then .[$k] else empty end' "$OPT" 2>/dev/null
+}
+resolve() { v="$(opt "$1")"; [ -n "$v" ] && printf '%s' "$v" || printf '%s' "$2"; }
+
+MASTER_KEY="$(resolve MEILI_MASTER_KEY "${MEILI_MASTER_KEY:-}")"
+API="$(resolve API_URL "${API_URL:-}")"
+SEARCH_URL="$(resolve MEILISEARCH_URL "${MEILISEARCH_URL:-}")"
+REG="$(resolve ALLOW_REGISTRATION true)"
+
+# (1) Sourceable env for our own services (meilisearch, salt-rim). MEILISEARCH_KEY
+# must equal Meilisearch's master key for the API<->search handshake to work.
+cat > /run/bar-assistant.env <<EOF
+export MEILI_MASTER_KEY='${MASTER_KEY}'
+export MEILISEARCH_KEY='${MASTER_KEY}'
+export API_URL='${API}'
+export APP_URL='${API}'
+export MEILISEARCH_URL='${SEARCH_URL}'
+export ALLOW_REGISTRATION='${REG}'
+export DEFAULT_LOCALE='${DEFAULT_LOCALE:-en-US}'
+export MAILS_ENABLED='${MAILS_ENABLED:-false}'
+EOF
+
+# (2) Laravel .env for the API (baked by `php artisan config:cache`). Upsert the
+# user-resolved values; these keys are intentionally unset as image ENV so .env
+# is not shadowed.
+ENVFILE=/var/www/cocktails/.env
+set_env() {
+    [ -f "$ENVFILE" ] || return 0
+    if grep -qE "^${1}=" "$ENVFILE"; then
+        sed -i "s|^${1}=.*|${1}=${2}|" "$ENVFILE"
+    else
+        printf '%s=%s\n' "$1" "$2" >> "$ENVFILE"
+    fi
+}
+set_env APP_URL "${API}"
+set_env MEILISEARCH_KEY "${MASTER_KEY}"
+set_env MEILISEARCH_HOST "${MEILISEARCH_HOST:-http://127.0.0.1:7700}"
+set_env ALLOW_REGISTRATION "${REG}"
+chown www-data:www-data "$ENVFILE" 2>/dev/null || true
+exit 0
+PREP
+RUN chmod +x /usr/local/bin/ba-prep.sh
+
+# Wait until Meilisearch is actually serving. The base's 99-bass init runs
+# `scout:sync-index-settings`, which hard-fails (set -e -> exit 2) if Meilisearch
+# isn't reachable yet -- so without this gate 99-bass races the meilisearch
+# longrun on boot. Bounded so a genuinely-dead Meilisearch can't hang startup
+# forever; we exit 0 regardless so 99-bass proceeds (and surfaces the real
+# error itself) rather than failing the whole s6 bring-up here.
+RUN cat > /usr/local/bin/meili-wait.sh <<'WAIT'
+#!/usr/bin/env bash
+addr="${MEILI_HTTP_ADDR:-127.0.0.1:7700}"
+for _ in $(seq 1 60); do
+    curl -fsS "http://${addr}/health" >/dev/null 2>&1 && exit 0
+    sleep 1
+done
+echo "meili-wait: timed out waiting for meilisearch at ${addr}" >&2
+exit 0
+WAIT
+RUN chmod +x /usr/local/bin/meili-wait.sh
+
+# ---------------------------------------------------------------------------
+# s6-overlay services (the base image's /init supervises these alongside
+# Bar Assistant's own php-fpm + nginx):
+#   prep        oneshot  -> runs ba-prep.sh
+#   meilisearch longrun  -> depends on prep
+#   meili-ready oneshot  -> depends on meilisearch; blocks until /health is up
+#   salt-rim    longrun  -> depends on prep
+# The base's 99-bass is made to depend on meili-ready so its index sync only
+# runs once Meilisearch is serving.
+# ---------------------------------------------------------------------------
+RUN set -eux; \
+    base=/etc/s6-overlay/s6-rc.d; \
+    # prep (oneshot)
+    mkdir -p "$base/prep"; \
+    printf 'oneshot' > "$base/prep/type"; \
+    printf '%s\n' '/command/with-contenv bash /usr/local/bin/ba-prep.sh' > "$base/prep/up"; \
+    # meilisearch (longrun)
+    mkdir -p "$base/meilisearch/dependencies.d"; \
+    printf 'longrun' > "$base/meilisearch/type"; \
+    touch "$base/meilisearch/dependencies.d/prep"; \
+    # meili-ready (oneshot) -> gate the base init on Meilisearch being up
+    mkdir -p "$base/meili-ready/dependencies.d"; \
+    printf 'oneshot' > "$base/meili-ready/type"; \
+    printf '%s\n' '/command/with-contenv bash /usr/local/bin/meili-wait.sh' > "$base/meili-ready/up"; \
+    touch "$base/meili-ready/dependencies.d/meilisearch"; \
+    # salt-rim (longrun)
+    mkdir -p "$base/salt-rim/dependencies.d"; \
+    printf 'longrun' > "$base/salt-rim/type"; \
+    touch "$base/salt-rim/dependencies.d/prep"; \
+    # make the base's 99-bass init wait for Meilisearch readiness
+    printf '%s\n' 'meili-ready' >> "$base/99-bass/dependencies"; \
+    # ensure prep (which writes .env) runs before the base bakes config:cache
+    printf '%s\n' 'prep' >> "$base/50-laravel-automations/dependencies"; \
+    # register our services in the user bundle
+    mkdir -p "$base/user/contents.d"; \
+    touch "$base/user/contents.d/prep" \
+          "$base/user/contents.d/meilisearch" \
+          "$base/user/contents.d/meili-ready" \
+          "$base/user/contents.d/salt-rim"
+
+RUN cat > /etc/s6-overlay/s6-rc.d/meilisearch/run <<'RUNMEILI'
+#!/command/with-contenv sh
+# Pick up the user's resolved MEILI_MASTER_KEY (with-contenv can't, due to
+# S6_KEEP_ENV=1); prep wrote this before meilisearch starts (dependency).
+[ -r /run/bar-assistant.env ] && . /run/bar-assistant.env
+# Meilisearch writes into its current working directory at startup, and s6
+# launches services from "/" (not writable by www-data) -> "Permission denied
+# (os error 13)". cd into the data dir (which prep created and chowned) first.
+cd "${MEILI_DB_PATH:-/data/meilisearch}" || exit 1
+exec s6-setuidgid www-data meilisearch
+RUNMEILI
+
+RUN cat > /etc/s6-overlay/s6-rc.d/salt-rim/run <<'RUNSR'
+#!/command/with-contenv sh
+# Source the user's resolved config (API_URL, MEILISEARCH_URL, ALLOW_REGISTRATION,
+# ...) so envsubst bakes the right values into config.js. with-contenv alone
+# can't deliver them here (S6_KEEP_ENV=1); prep wrote this file before we start.
+[ -r /run/bar-assistant.env ] && . /run/bar-assistant.env
+mkdir -p /tmp/sr-nginx/body /tmp/sr-nginx/proxy /tmp/sr-nginx/fastcgi /tmp/sr-nginx/uwsgi /tmp/sr-nginx/scgi
+chown -R www-data:www-data /tmp/sr-nginx
+envsubst < /var/www/salt-rim/config.tmpl.js > /var/www/salt-rim/config.js
+chown www-data:www-data /var/www/salt-rim/config.js
+exec s6-setuidgid www-data /usr/sbin/nginx -c /etc/nginx-salt-rim.conf
+RUNSR
+
+RUN chmod +x /etc/s6-overlay/s6-rc.d/meilisearch/run \
+             /etc/s6-overlay/s6-rc.d/salt-rim/run
+
+LABEL \
+  io.hass.version="5.15.4.15.0" \
+  io.hass.type="app" \
+  io.hass.arch="aarch64|amd64" \
+  io.hass.name="Bar Assistant stack" \
+  io.hass.description="Meilisearch + Bar Assistant API + Salt Rim in one add-on"
+
+EXPOSE 2118
+
+# Keep the base image's s6 ENTRYPOINT (/init) -- it now supervises all three.

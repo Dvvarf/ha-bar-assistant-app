@@ -1,0 +1,27 @@
+name: "Bar Assistant"
+version: "5.15.4.15.0"
+description: "Meilisearch + Bar Assistant API + Salt Rim in a single add-on"
+url: "https://github.com/karlomikus/bar-assistant"
+slug: "bar-assistant"
+init: false
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+webui: "http://[HOST]:[PORT:2118]"
+panel_icon: "mdi:glass-cocktail"
+ports:
+  2118/tcp: 2118
+ports_description:
+  2118/tcp: "Web UI (/), Bar Assistant API (/bar/), Meilisearch (/search/)"
+options:
+  MEILI_MASTER_KEY: "please-change-me-min-16-bytes"
+  API_URL: "http://homeassistant.local:2118/bar"
+  MEILISEARCH_URL: "http://homeassistant.local:2118/search"
+  ALLOW_REGISTRATION: true
+schema:
+  MEILI_MASTER_KEY: "password"
+  API_URL: "url"
+  MEILISEARCH_URL: "url"
+  ALLOW_REGISTRATION: "bool"
