@@ -21,13 +21,25 @@ This matches the official "subfolders" reverse-proxy layout documented at
 
 ---
 
-## Files in this folder
+## Repository layout
 
-| File | Purpose |
+This add-on lives in the **`bar-assistant/`** subfolder of a standard HA add-on
+*repository*. The repo root holds `repository.yaml` (store manifest), a root
+`README.md`, the publish/CI tooling (`.github/workflows/`, `scripts/`,
+`renovate.json`), and `LICENSE`.
+
+| File (this folder) | Purpose |
 | --- | --- |
 | `Dockerfile` | Builds the combined image. Multi-stage (pulls Meilisearch binary + Salt Rim assets), then layers everything onto the Bar Assistant server image. |
-| `config.yaml` | HA add-on manifest (ports, options/schema, webui, version, etc.). |
+| `config.yaml` | HA add-on manifest (ports, options/schema, webui, version, **`image:` for prebuilt GHCR pulls**). |
 | `CLAUDE.md` | This file — handoff notes + verified facts. Loaded into Claude Code's context each session. |
+| `README.md` / `DOCS.md` / `CHANGELOG.md` | Store listing, Documentation tab, and update notes. |
+| `tests/smoke.sh` | Boot smoke test (build the image, run this) — also the CI gate. |
+
+Repo-root tooling: `scripts/check-version-sync.sh` (asserts `config.yaml`
+`version:`, the Dockerfile `io.hass.version` LABEL, and the upstream `FROM`/
+`BUILD_FROM` tags all agree), and `.github/workflows/` (`lint.yaml`, `ci.yaml`
+build+smoke, `publish.yaml` → GHCR on a release tag).
 
 **Intentionally absent** (removed during development, do not re-add without reason):
 
@@ -36,9 +48,8 @@ This matches the official "subfolders" reverse-proxy layout documented at
   reads it). The base image is pinned via `ARG BUILD_FROM=barassistant/server:5.15`
   in the Dockerfile instead (minor tag — see "Versioning" below).
 
-**Not yet created** (needed before publishing, none exist today): `icon.png`,
-`logo.png`, `README.md`, `DOCS.md`, `CHANGELOG.md`, `apparmor.txt`,
-`translations/en.yaml`.
+**Not yet created** (optional polish, none exist today): `icon.png`, `logo.png`,
+`apparmor.txt`, `translations/en.yaml`.
 
 ---
 
@@ -205,7 +216,10 @@ See "Fixes applied & verified" below for the bugs that were found and fixed gett
 there. amd64 was **not** cross-built — the musl-lib copy uses arch-agnostic
 globs/paths designed for both, but verify on a real amd64 build.
 
-Local Docker smoke test (HA injects `/data` and `options.json`):
+Local Docker smoke test (HA injects `/data` and `options.json`). The steps below
+are automated in `tests/smoke.sh` (`IMAGE=ha-bar-assistant:test ./tests/smoke.sh`),
+which CI also runs; the raw sequence is kept here for reference. Build from inside
+this `bar-assistant/` folder:
 
 ```bash
 docker build -t ha-bar-assistant:test .
