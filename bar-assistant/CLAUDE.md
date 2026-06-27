@@ -50,7 +50,10 @@ build+smoke, `publish.yaml` → GHCR on a release tag).
   reads it). The base image is pinned via `ARG BUILD_FROM=barassistant/server:5.15`
   in the Dockerfile instead (minor tag — see "Versioning" below).
 
-**Not yet created** (optional polish, none exist today): `translations/en.yaml`.
+`translations/en.yaml` — localizes the option **names/descriptions** (and the
+published port) shown in the add-on Configuration tab. Keys mirror `config.yaml`
+`schema:`; nested groups (`ai`, `redis`) translate their sub-keys under a
+`fields:` block. Add a key here whenever you add an option to the schema.
 
 ---
 
