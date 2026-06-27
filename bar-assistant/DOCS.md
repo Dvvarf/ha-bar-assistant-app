@@ -16,7 +16,7 @@ The API and Meilisearch are not published directly; they are reached through the
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `MEILI_MASTER_KEY` | `please-change-me-min-16-bytes` | **Change this.** Min 16 bytes. Also used as the API↔search key internally. |
+| `MEILI_MASTER_KEY` | _(empty)_ | **Required — set before starting.** Min 16 bytes. The add-on will not start until you set it. Also used as the API↔search key internally. |
 | `API_URL` | `http://homeassistant.local:2118/bar` | Browser-facing API base. **Must end in `/bar`** and be reachable from your browser. |
 | `MEILISEARCH_URL` | `http://homeassistant.local:2118/search` | Browser-facing search base. **Must end in `/search`.** |
 | `ALLOW_REGISTRATION` | `true` | Allow new user sign-ups. Set `false` after creating your account. |
@@ -41,7 +41,6 @@ untouched to keep Bar Assistant's defaults.
 | --- | --- | --- |
 | `APP_NAME` | `Bar Assistant` | Display name used by the API. |
 | `LOG_LEVEL` | `warning` | `debug`/`info`/`notice`/`warning`/`error`/`critical`/`alert`/`emergency`. |
-| `ENABLE_PASSWORD_LOGIN` | `true` | Set `false` if you only use SSO (not configured by this add-on). |
 | `ENABLE_FEEDS` | `false` | Enable activity feeds. |
 | `SESSION_LIFETIME` | `120` | Session length in minutes. |
 

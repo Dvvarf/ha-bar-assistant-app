@@ -22,6 +22,14 @@ All notable changes to this add-on are documented here. Versions follow the
   `MEILISEARCH_URL`'s host) kept resolving to the stale value. The cap means an
   option change now propagates within a day (or immediately on a hard reload).
   Hashed assets stay cacheable.
+- Remove the `ENABLE_PASSWORD_LOGIN` add-on option. It only makes sense when an
+  alternative SSO login is configured, which this add-on does not set up, so the
+  toggle could never be used in practice. The upstream default (password login
+  enabled) is left in place.
+- Ship `MEILI_MASTER_KEY` empty and drop its build-time fallback default. The
+  add-on now fails closed: with no key set, Meilisearch (`MEILI_ENV=production`)
+  refuses to start, instead of silently booting on a public placeholder key. Set
+  a private value of at least 16 bytes before starting.
 
 ## 5.15.4.15.1
 
