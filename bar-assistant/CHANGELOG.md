@@ -15,6 +15,13 @@ All notable changes to this add-on are documented here. Versions follow the
   the Watchdog toggle on the add-on page is enabled. (The older config.yaml
   `watchdog:` key is rejected as obsolete by the add-on linter in favour of the
   HEALTHCHECK, which additionally covers Meilisearch.)
+- Cap browser caching of Salt Rim's `config.js` at one day, and serve the
+  `index.html` SPA shell with no-cache headers. `config.js` holds the runtime
+  `API_URL`/`MEILISEARCH_URL` baked from the add-on options at boot; browsers
+  previously cached it indefinitely, so changing an option (e.g.
+  `MEILISEARCH_URL`'s host) kept resolving to the stale value. The cap means an
+  option change now propagates within a day (or immediately on a hard reload).
+  Hashed assets stay cacheable.
 
 ## 5.15.4.15.1
 
