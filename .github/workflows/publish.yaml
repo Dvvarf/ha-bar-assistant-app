@@ -2,7 +2,7 @@ name: Publish to GHCR
 
 # Builds and pushes the per-architecture add-on images that Home Assistant pulls.
 # HA substitutes {arch} in config.yaml's `image:` key, so each architecture is its
-# OWN single-arch image repo (amd64-addon-bar-assistant, aarch64-addon-bar-assistant)
+# OWN single-arch image repo (ha-addon-bar-assistant-amd64, ha-addon-bar-assistant-aarch64)
 # -- not a combined multi-arch manifest.
 #
 # Trigger: a pushed git tag matching the 5-part version, or a published Release.
@@ -89,7 +89,7 @@ jobs:
           push: true
           provenance: false
           tags: |
-            ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.arch }}-addon-bar-assistant:${{ needs.guard.outputs.version }}
-            ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.arch }}-addon-bar-assistant:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/ha-addon-bar-assistant-${{ matrix.arch }}:${{ needs.guard.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/ha-addon-bar-assistant-${{ matrix.arch }}:latest
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
