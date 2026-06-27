@@ -346,6 +346,19 @@ image or the musl-lib copy starts breaking across Meilisearch upgrades.
 6. **Ports are not configurable via options + `host_network: true` intentionally.**
    Current design: fixed internal ports, single published `2118`, remappable
    via the Network tab. Don't reintroduce `host_network` without intent.
+7. **Health monitoring (don't remove).** Because s6's `/init` stays alive even
+   when an inner service hangs, HA would otherwise report a wedged add-on as
+   "Started". The Dockerfile `HEALTHCHECK` fixes this: it probes all three inner
+   services (`127.0.0.1:2118/`, `:8081/api/server/version`, `:7700/health`), so
+   any one failing flips the container to "unhealthy". Modern HA Supervisor
+   drives its add-on watchdog off this HEALTHCHECK status, so the single
+   directive gives both the UI health indicator and the auto-restart (when the
+   user's **Watchdog toggle** is on). **Do NOT add a `watchdog:` key to
+   config.yaml** — the official add-on linter (`frenck/action-addon-linter`,
+   run in CI) rejects it as obsolete: "Use the native Docker HEALTHCHECK
+   directive instead." The smoke test asserts the container reaches `healthy`.
+   The 120s `start-period` matches first-boot migrations/index-sync — don't
+   shorten it.
 
 ---
 

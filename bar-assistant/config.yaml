@@ -1,5 +1,5 @@
 name: "Bar Assistant"
-version: "5.15.4.15.1"
+version: "5.15.4.15.2"
 description: "Meilisearch + Bar Assistant API + Salt Rim in a single add-on"
 url: "https://github.com/karlomikus/bar-assistant"
 slug: "bar-assistant"
@@ -16,6 +16,13 @@ arch:
   - aarch64
 webui: "http://[HOST]:[PORT:2118]"
 panel_icon: "mdi:glass-cocktail"
+# Application-level health detection is done via the Dockerfile HEALTHCHECK, NOT
+# a `watchdog:` key here: the HA add-on linter rejects `watchdog` as obsolete
+# ("Use the native Docker HEALTHCHECK directive instead"). Modern Supervisor
+# drives its add-on watchdog off the container's HEALTHCHECK status, so the
+# HEALTHCHECK gives both the health indicator in the UI and the auto-restart
+# (when the user's Watchdog toggle is on) -- and it probes all three inner
+# services, including Meilisearch. See the HEALTHCHECK in the Dockerfile.
 ports:
   2118/tcp: 2118
 ports_description:
