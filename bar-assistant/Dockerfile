@@ -293,7 +293,7 @@ set_env ALLOW_REGISTRATION "${REG}"
 # because it may contain spaces. ---
 APP_NAME_VAL="$(opt APP_NAME)"
 [ -n "$APP_NAME_VAL" ] && set_env APP_NAME "\"${APP_NAME_VAL}\""
-for k in LOG_LEVEL ENABLE_PASSWORD_LOGIN ENABLE_FEEDS SESSION_LIFETIME; do
+for k in LOG_LEVEL ENABLE_FEEDS SESSION_LIFETIME; do
     v="$(opt "$k")"
     [ -n "$v" ] && set_env "$k" "$v"
 done

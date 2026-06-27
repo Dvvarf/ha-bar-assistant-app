@@ -41,7 +41,6 @@ untouched to keep Bar Assistant's defaults.
 | --- | --- | --- |
 | `APP_NAME` | `Bar Assistant` | Display name used by the API. |
 | `LOG_LEVEL` | `warning` | `debug`/`info`/`notice`/`warning`/`error`/`critical`/`alert`/`emergency`. |
-| `ENABLE_PASSWORD_LOGIN` | `true` | Set `false` if you only use SSO (not configured by this add-on). |
 | `ENABLE_FEEDS` | `false` | Enable activity feeds. |
 | `SESSION_LIFETIME` | `120` | Session length in minutes. |
 

@@ -35,11 +35,6 @@ configuration:
     description: >-
       Logging verbosity for the Bar Assistant API. Use "debug" or "info" when troubleshooting.
       Defaults to "warning".
-  ENABLE_PASSWORD_LOGIN:
-    name: Enable password login
-    description: >-
-      Allow signing in with an email and password. Turn this off only if you
-      rely solely on SSO (not configured by this add-on).
   ENABLE_FEEDS:
     name: Enable feeds
     description: >-

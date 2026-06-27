@@ -22,11 +22,15 @@ All notable changes to this add-on are documented here. Versions follow the
   `MEILISEARCH_URL`'s host) kept resolving to the stale value. The cap means an
   option change now propagates within a day (or immediately on a hard reload).
   Hashed assets stay cacheable.
+- Remove the `ENABLE_PASSWORD_LOGIN` add-on option. It only makes sense when an
+  alternative SSO login is configured, which this add-on does not set up, so the
+  toggle could never be used in practice. The upstream default (password login
+  enabled) is left in place.
 
 ## 5.15.4.15.1
 
 - Add optional add-on options (hidden until enabled): general toggles
-  (`APP_NAME`, `LOG_LEVEL`, `ENABLE_PASSWORD_LOGIN`, `ENABLE_FEEDS`,
+  (`APP_NAME`, `LOG_LEVEL`, `ENABLE_FEEDS`,
   `SESSION_LIFETIME`), an `ai` group for a single LLM provider (key/URL routed to
   the chosen provider), and a `redis` group to use an external Redis for
   cache/sessions. No change to existing installs that leave them unset.

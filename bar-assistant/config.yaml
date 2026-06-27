@@ -46,7 +46,6 @@ schema:
   # --- General (all optional; hidden under "show unused optional" until set) ---
   APP_NAME: "str?"
   LOG_LEVEL: "list(debug|info|notice|warning|error|critical|alert|emergency)?"
-  ENABLE_PASSWORD_LOGIN: "bool?"
   ENABLE_FEEDS: "bool?"
   SESSION_LIFETIME: "int?"
   # --- AI / LLM (single provider; one generic key/url routed to the chosen one) ---

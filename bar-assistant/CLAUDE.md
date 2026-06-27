@@ -182,8 +182,8 @@ It does three things:
 The required knobs are minimal: one key (`MEILI_MASTER_KEY`) and the URLs.
 App-specific aliases are derived internally so users don't set them twice. Beyond
 those, `config.yaml` exposes **optional** options (hidden in the UI until used):
-top-level general toggles (`APP_NAME`, `LOG_LEVEL`, `ENABLE_PASSWORD_LOGIN`,
-`ENABLE_FEEDS`, `SESSION_LIFETIME`) and two nested groups, `ai` (single LLM
+top-level general toggles (`APP_NAME`, `LOG_LEVEL`, `ENABLE_FEEDS`,
+`SESSION_LIFETIME`) and two nested groups, `ai` (single LLM
 provider; ba-prep routes the generic `api_key`/`base_url` to the chosen provider's
 `<PROVIDER>_API_KEY`/`_URL`) and `redis` (external Redis for cache/sessions). The
 nested groups must stay present as empty dicts in `options:` — Supervisor rejects
