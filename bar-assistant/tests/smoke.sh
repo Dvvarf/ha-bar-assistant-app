@@ -40,7 +40,7 @@ cleanup
 echo "==> Seeding /data/options.json into a named volume"
 docker volume create "$VOLUME" >/dev/null
 docker run --rm -v "$VOLUME":/data alpine:3.20 sh -c 'printf "%s" "$1" > /data/options.json' _ \
-  '{"MEILI_MASTER_KEY":"super-secret-key-987654321","API_URL":"http://localhost:2118/bar","MEILISEARCH_URL":"http://localhost:2118/search","ALLOW_REGISTRATION":true}'
+  '{"MEILI_MASTER_KEY":"super-secret-key-987654321","BASE_URL":"http://localhost:2118","ALLOW_REGISTRATION":true}'
 
 echo "==> Starting $IMAGE${PLATFORM:+ (platform $PLATFORM)}"
 docker run -d "${PLATFORM_ARG[@]}" --name "$CONTAINER" -p "${PORT}:2118" -v "$VOLUME":/data "$IMAGE" >/dev/null

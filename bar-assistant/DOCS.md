@@ -17,14 +17,14 @@ The API and Meilisearch are not published directly; they are reached through the
 | Option | Default | Notes |
 | --- | --- | --- |
 | `MEILI_MASTER_KEY` | _(empty)_ | **Required — set before starting.** Min 16 bytes. The add-on will not start until you set it. Also used as the API↔search key internally. |
-| `API_URL` | `http://homeassistant.local:2118/bar` | Browser-facing API base. **Must end in `/bar`** and be reachable from your browser. |
-| `MEILISEARCH_URL` | `http://homeassistant.local:2118/search` | Browser-facing search base. **Must end in `/search`.** |
+| `BASE_URL` | `http://homeassistant.local:2118` | Browser-facing address of the add-on, as `protocol://host:port` with **no path**. Must be reachable from your browser. |
 | `ALLOW_REGISTRATION` | `true` | Allow new user sign-ups. Set `false` after creating your account. |
 
-`API_URL` and `MEILISEARCH_URL` are consumed **by the browser** (Salt Rim calls
-both directly), so they must be absolute URLs that resolve from your device with
-the real host and the effective port. If you remap port 2118 in the **Network**
-tab, update these options to match.
+`BASE_URL` is consumed **by the browser** (Salt Rim calls the API and search
+engine directly), so it must be an absolute address that resolves from your
+device with the real host and the effective port. The add-on adds the API
+(`/bar`) and search (`/search`) paths for you. If you remap port 2118 in the
+**Network** tab, update `BASE_URL` to match.
 
 > **Restart after changing options.** Some values are baked at boot; a restart
 > guarantees the API, search key, and URLs line up.
@@ -95,7 +95,7 @@ build on your device.
   traversable for the nginx user). If you see it, restart the add-on.
 - **Search not working:** confirm `MEILI_MASTER_KEY` is set and you restarted
   after changing it; check `/search/health` returns `{"status":"available"}`.
-- **API unreachable from the browser:** verify `API_URL` is the real host:port and
-  ends in `/bar`.
+- **API unreachable from the browser:** verify `BASE_URL` is the real host:port
+  (with no path) and is reachable from your device.
 
 For architecture and maintainer notes, see `CLAUDE.md` in this folder.

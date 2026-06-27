@@ -179,8 +179,9 @@ It does three things:
 
 ## Configuration / environment variables
 
-The required knobs are minimal: one key (`MEILI_MASTER_KEY`) and the URLs.
-App-specific aliases are derived internally so users don't set them twice. Beyond
+The required knobs are minimal: one key (`MEILI_MASTER_KEY`) and one address
+(`BASE_URL`). All app-specific URLs/aliases are derived internally so users don't
+set them twice (and can't set them inconsistently). Beyond
 those, `config.yaml` exposes **optional** options (hidden in the UI until used):
 top-level general toggles (`APP_NAME`, `LOG_LEVEL`, `ENABLE_FEEDS`,
 `SESSION_LIFETIME`) and two nested groups, `ai` (single LLM
@@ -198,27 +199,31 @@ an omitted optional dict (home-assistant/supervisor#4606). ba-prep reads them vi
 | `MEILI_HTTP_ADDR` | `127.0.0.1:7700` | Meilisearch bind addr. |
 | `MEILI_DB_PATH` | `/data/meilisearch` | |
 | `MEILI_ENV` | `production` | |
-| `API_URL` | `http://homeassistant.local:2118/bar` | User option. Browser-facing API base. **Must include `/bar`.** |
+| `BASE_URL` | `http://homeassistant.local:2118` | User option. Browser-facing origin (`protocol://host:port`, **no path**). The only configurable part of the two URLs below. ba-prep strips any trailing slash. |
+| `API_URL` | = `BASE_URL` + `/bar` | Derived in ba-prep. Browser-facing API base; the `/bar` suffix is fixed by the proxy layout. |
 | `APP_URL` | = `API_URL` | Derived alias; Laravel uses it to build absolute URLs (images/pagination). |
-| `MEILISEARCH_URL` | `http://homeassistant.local:2118/search` | User option. Browser-facing search base. **Must include `/search`.** |
+| `MEILISEARCH_URL` | = `BASE_URL` + `/search` | Derived in ba-prep. Browser-facing search base; the `/search` suffix is fixed by the proxy layout. |
 | `DB_CONNECTION` / `DB_DATABASE` | `sqlite` / `/data/bar-assistant/database.ba3.sqlite` | Redis omitted. |
 | `CACHE_DRIVER` / `SESSION_DRIVER` | `file` (or `redis`) | Resolved by ba-prep into `.env`, **not** Docker ENV — the base image's bundled `.env` defaults these to `redis`, so ba-prep must force `file` unless the `redis` option group has a host (then both switch to `redis`; queue stays `sync`, no worker). |
 | `ALLOW_REGISTRATION` | `true` | User option. |
 | `DEFAULT_LOCALE` | `en-US` | Salt Rim. |
 | `MAILS_ENABLED` | `false` | Salt Rim. |
 
-**Critical:** `API_URL` and `MEILISEARCH_URL` are consumed **by the browser**
-(Salt Rim calls the API and Meilisearch directly via JS). They must be absolute,
-browser-reachable URLs. Because we proxy under subfolders they are same-origin,
-which also avoids CORS. `homeassistant.local:2118` is a placeholder — the deployer
-must set the real host and effective port, keeping the `/bar` and `/search`
-suffixes. Salt Rim appends `/api/...` to `API_URL` and `/indexes/...` to
+**Critical:** the derived `API_URL` and `MEILISEARCH_URL` are consumed **by the
+browser** (Salt Rim calls the API and Meilisearch directly via JS). They must be
+absolute, browser-reachable URLs. Because we proxy under subfolders they are
+same-origin, which also avoids CORS. `homeassistant.local:2118` is a placeholder
+— the deployer sets the real host and effective port via the single `BASE_URL`
+option; the `/bar` and `/search` suffixes are fixed by the proxy layout and
+appended by ba-prep, so they are **not** exposed as options (having two URL
+options that only ever differed by a fixed suffix was redundant and let the hosts
+drift apart). Salt Rim appends `/api/...` to `API_URL` and `/indexes/...` to
 `MEILISEARCH_URL`; the trailing-slash `proxy_pass` strips the `/bar` and `/search`
 prefixes before forwarding.
 
-`config.yaml` exposes these as options with a `schema` (`password`, `url`, `url`,
-`bool`). HA options reach the services through `ba-prep.sh` (see above), not
-automatically.
+`config.yaml` exposes `BASE_URL` as a `url`-typed option (alongside
+`MEILI_MASTER_KEY` `password` and `ALLOW_REGISTRATION` `bool`). HA options reach
+the services through `ba-prep.sh` (see above), not automatically.
 
 ---
 
@@ -246,13 +251,13 @@ docker build -t ha-bar-assistant:test .
 docker volume rm ba-data 2>/dev/null; docker volume create ba-data
 # Seed options.json the way HA would (write it INTO the volume):
 docker run --rm -v ba-data:/data alpine:3.20 sh -c 'printf "%s" "$1" > /data/options.json' _ \
-  '{"MEILI_MASTER_KEY":"super-secret-key-987654321","API_URL":"http://localhost:2118/bar","MEILISEARCH_URL":"http://localhost:2118/search","ALLOW_REGISTRATION":true}'
+  '{"MEILI_MASTER_KEY":"super-secret-key-987654321","BASE_URL":"http://localhost:2118","ALLOW_REGISTRATION":true}'
 docker run -d --name ba-test -p 2118:2118 -v ba-data:/data ha-bar-assistant:test
 
 # "Bar Assistant API ready" in the log == fully booted (~4s after image cache warm).
 # then check (all should be 200):
 #   http://localhost:2118/                       -> Salt Rim UI
-#   http://localhost:2118/config.js              -> reflects API_URL/MEILISEARCH_URL from options
+#   http://localhost:2118/config.js              -> reflects API_URL/MEILISEARCH_URL derived from BASE_URL
 #   http://localhost:2118/bar/api/server/version -> JSON
 #   http://localhost:2118/search/health          -> {"status":"available"}
 # image test (seed a file as www-data, fetch WITHOUT a token like an <img> tag):
@@ -344,8 +349,8 @@ image or the musl-lib copy starts breaking across Meilisearch upgrades.
    would require rebuilding Salt Rim from source with a relative Vite `base`.)
 5. **`webui` port is a literal** (`[PORT:2118]`). If the published port is remapped
    in the HA Network tab, HA substitutes the effective port for the button — fine.
-   But the `API_URL`/`MEILISEARCH_URL` options are not auto-derived; update them to
-   match the real host/port.
+   But the `BASE_URL` option is not auto-derived; update it to match the real
+   host/port.
 6. **Ports are not configurable via options + `host_network: true` intentionally.**
    Current design: fixed internal ports, single published `2118`, remappable
    via the Network tab. Don't reintroduce `host_network` without intent.
