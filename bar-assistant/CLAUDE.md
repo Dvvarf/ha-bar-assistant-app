@@ -104,7 +104,9 @@ matching FROM/`BUILD_FROM` tag in the Dockerfile):
 | Upstream **patch** (server `5.15.2→3`, salt-rim, meilisearch) | bump `<pkg>`: `…​.1` (tags float on patch, so often just a rebuild). |
 | This image only (Dockerfile / s6 / config.yaml) | bump `<pkg>`: `…​.1` |
 
-Current seed `5.15.4.15.0` = server 5.15 + salt-rim 4.15, first packaged release.
+Current `5.15.4.15.1` = server 5.15 + salt-rim 4.15; `.0` was the first packaged
+release, `.1` added the optional AI/Redis/general add-on options (config + ba-prep
+only, no upstream move).
 
 ---
 
@@ -174,8 +176,16 @@ It does three things:
 
 ## Configuration / environment variables
 
-User-facing knobs are kept minimal: one key (`MEILI_MASTER_KEY`) and the URLs.
-App-specific aliases are derived internally so users don't set them twice.
+The required knobs are minimal: one key (`MEILI_MASTER_KEY`) and the URLs.
+App-specific aliases are derived internally so users don't set them twice. Beyond
+those, `config.yaml` exposes **optional** options (hidden in the UI until used):
+top-level general toggles (`APP_NAME`, `LOG_LEVEL`, `ENABLE_PASSWORD_LOGIN`,
+`ENABLE_FEEDS`, `SESSION_LIFETIME`) and two nested groups, `ai` (single LLM
+provider; ba-prep routes the generic `api_key`/`base_url` to the chosen provider's
+`<PROVIDER>_API_KEY`/`_URL`) and `redis` (external Redis for cache/sessions). The
+nested groups must stay present as empty dicts in `options:` — Supervisor rejects
+an omitted optional dict (home-assistant/supervisor#4606). ba-prep reads them via
+`optp GROUP KEY` and writes only what the user set.
 
 | Var | Value / default | Notes |
 | --- | --- | --- |
@@ -189,7 +199,7 @@ App-specific aliases are derived internally so users don't set them twice.
 | `APP_URL` | = `API_URL` | Derived alias; Laravel uses it to build absolute URLs (images/pagination). |
 | `MEILISEARCH_URL` | `http://homeassistant.local:2118/search` | User option. Browser-facing search base. **Must include `/search`.** |
 | `DB_CONNECTION` / `DB_DATABASE` | `sqlite` / `/data/bar-assistant/database.ba3.sqlite` | Redis omitted. |
-| `CACHE_DRIVER` / `SESSION_DRIVER` | `file` | (no Redis in this image) |
+| `CACHE_DRIVER` / `SESSION_DRIVER` | `file` (or `redis`) | Resolved by ba-prep into `.env`, **not** Docker ENV — the base image's bundled `.env` defaults these to `redis`, so ba-prep must force `file` unless the `redis` option group has a host (then both switch to `redis`; queue stays `sync`, no worker). |
 | `ALLOW_REGISTRATION` | `true` | User option. |
 | `DEFAULT_LOCALE` | `en-US` | Salt Rim. |
 | `MAILS_ENABLED` | `false` | Salt Rim. |

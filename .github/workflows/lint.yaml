@@ -11,7 +11,7 @@ jobs:
     name: Add-on config linter
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Lint add-on config
         uses: frenck/action-addon-linter@v2
         with:
@@ -21,7 +21,7 @@ jobs:
     name: Version coupling guard
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Check version / LABEL / upstream tags agree
         run: bash scripts/check-version-sync.sh
 
@@ -29,7 +29,7 @@ jobs:
     name: Dockerfile lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Run hadolint
         uses: hadolint/hadolint-action@v3.1.0
         with:
