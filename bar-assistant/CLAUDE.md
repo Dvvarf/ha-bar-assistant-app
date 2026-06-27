@@ -33,6 +33,7 @@ This add-on lives in the **`bar-assistant/`** subfolder of a standard HA add-on
 | `Dockerfile` | Builds the combined image. Multi-stage (pulls Meilisearch binary + Salt Rim assets), then layers everything onto the Bar Assistant server image. |
 | `config.yaml` | HA add-on manifest (ports, options/schema, webui, version, **`image:` for prebuilt GHCR pulls**). |
 | `CLAUDE.md` | This file — handoff notes + verified facts. Loaded into Claude Code's context each session. |
+| `apparmor.txt` | AppArmor profile (profile name `bar-assistant`, matching the slug). Enabled via `apparmor: true` in `config.yaml`. Keep in sync with Dockerfile changes — see "Things to verify" item 8. |
 | `README.md` / `DOCS.md` / `CHANGELOG.md` | Store listing, Documentation tab, and update notes. |
 | `icon.png` / `logo.png` | Store icon (256×256, the navy glass mark) and brand banner (1360×500), both derived from the upstream Bar Assistant API logo. Auto-detected by filename. |
 | `tests/smoke.sh` | Boot smoke test (build the image, run this) — also the CI gate. |
@@ -53,8 +54,6 @@ build+smoke, `publish.yaml` → GHCR on a release tag).
 published port) shown in the add-on Configuration tab. Keys mirror `config.yaml`
 `schema:`; nested groups (`ai`, `redis`) translate their sub-keys under a
 `fields:` block. Add a key here whenever you add an option to the schema.
-
-**Not yet created** (optional polish, none exist today): `apparmor.txt`.
 
 ---
 
@@ -363,6 +362,26 @@ image or the musl-lib copy starts breaking across Meilisearch upgrades.
    directive instead." The smoke test asserts the container reaches `healthy`.
    The 120s `start-period` matches first-boot migrations/index-sync — don't
    shorten it.
+8. **AppArmor profile (`apparmor.txt`) must be kept in sync with Dockerfile
+   changes.** The profile grants capabilities, exec rights, and file access
+   tuned to the current stack. Changes that require updates:
+   - **New binaries or scripts** added to the image need a matching `ix` rule
+     if they're not already under a covered glob (e.g. `/usr/local/bin/**`).
+   - **New capabilities** needed by ba-prep.sh or s6 scripts (e.g. adding
+     `mount` operations) must be added as `capability` lines.
+   - **New shared libraries** copied from other images (like the musl libs for
+     Meilisearch) need `mr` rules if not already under `/lib/**` or `/usr/lib/**`.
+   - **New data paths outside `/data/`** need explicit rules; everything under
+     `/data/` and on the Docker VOLUME is already covered by `file,` +
+     `attach_disconnected`.
+   - **Upgrading Meilisearch to a glibc build** (if upstream ever switches)
+     would let you drop the `/lib/ld-musl-*.so.1 mr` and
+     `/usr/lib/libgcc_s.so.1 mr` lines.
+   If the add-on starts failing to start or behaves strangely after a profile
+   change, add `complain` to the flags line temporarily
+   (`flags=(attach_disconnected,mediate_deleted,complain)`) and inspect denials
+   with `journalctl _TRANSPORT=audit -g 'apparmor="ALLOWED"'` on the HA host,
+   then remove `complain` once the profile is complete.
 
 ---
 

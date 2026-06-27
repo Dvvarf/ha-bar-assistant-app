@@ -1,0 +1,56 @@
+#include <tunables/global>
+
+profile bar-assistant flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Broad file access for the PHP-FPM / nginx / Meilisearch / Laravel stack.
+  # Execute and mmap-exec are NOT covered by `file,` and are listed explicitly.
+  file,
+  signal (send,receive) set=(kill,term,int,hup,cont,usr1,usr2),
+
+  # s6-overlay: init, service supervision tree, and s6 commands
+  /init              ix,
+  /bin/**            ix,
+  /usr/bin/**        ix,
+  /usr/sbin/**       ix,
+  /usr/local/bin/**  ix,
+  /command/**        ix,
+  /package/**        ix,
+  /etc/s6-overlay/s6-rc.d/** ix,
+  /run/{s6,s6-rc*,service}/** rwix,
+
+  # Shared libraries — need `m` (mmap-with-exec) not provided by `file,`
+  /lib/**                    mr,
+  /usr/lib/**                mr,
+  /lib/x86_64-linux-gnu/**   mr,
+  /lib/aarch64-linux-gnu/**  mr,
+  # Meilisearch is a musl binary on this Debian/glibc base; its loader and
+  # libgcc are copied from the Alpine image into musl-specific paths.
+  /lib/ld-musl-*.so.1        mr,
+  /usr/lib/libgcc_s.so.1     mr,
+
+  # Devices
+  /dev/null  rw,
+  /dev/tty   rw,
+  /dev/pts/* rw,
+
+  # Runtime scratch space (sr-nginx temp dirs, s6 state, etc.)
+  /tmp/**  rwk,
+
+  # Persistent add-on storage (Meilisearch DB, Bar Assistant DB + uploads)
+  /data/** rwk,
+
+  # Capabilities
+  capability chown,           # ba-prep.sh: chown /data and storage dirs to www-data
+  capability dac_override,    # root process accessing www-data-owned files
+  capability dac_read_search, # traversing directories owned by other users
+  capability fowner,          # chmod on files not owned by root
+  capability fsetid,          # preserve setgid bits (cp/install)
+  capability kill,            # s6-overlay: send signals to supervised services
+  capability net_bind_service, # nginx: bind to port 2118
+  capability setgid,          # s6-setuidgid: drop to www-data (gid)
+  capability setuid,          # s6-setuidgid: drop to www-data (uid)
+
+  # Network (outbound: AI providers, optional Redis; inbound/local: :2118, :8081, :7700)
+  network,
+}
