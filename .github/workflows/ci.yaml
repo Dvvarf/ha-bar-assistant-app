@@ -36,7 +36,7 @@ jobs:
       # No "Set up QEMU" step: each leg builds its own native platform on a
       # matching runner, so cross-arch emulation is never needed.
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build image (${{ matrix.platform }})
         uses: docker/build-push-action@v6
