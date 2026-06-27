@@ -30,7 +30,7 @@ All notable changes to this add-on are documented here. Versions follow the
 ## 5.15.4.15.1
 
 - Add optional add-on options (hidden until enabled): general toggles
-  (`APP_NAME`, `LOG_LEVEL`, `ENABLE_FEEDS`,
+  (`APP_NAME`, `LOG_LEVEL`, `ENABLE_PASSWORD_LOGIN`, `ENABLE_FEEDS`,
   `SESSION_LIFETIME`), an `ai` group for a single LLM provider (key/URL routed to
   the chosen provider), and a `redis` group to use an external Redis for
   cache/sessions. No change to existing installs that leave them unset.
