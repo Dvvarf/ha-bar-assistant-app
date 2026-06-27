@@ -52,6 +52,7 @@ jobs:
         continue-on-error: ${{ !matrix.smoke_required }}
         env:
           IMAGE: ha-bar-assistant:test
+          PLATFORM: ${{ matrix.platform }}
         run: bash bar-assistant/tests/smoke.sh
 
       - name: Note emulated smoke result

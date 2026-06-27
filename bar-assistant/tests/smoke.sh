@@ -13,11 +13,18 @@
 # a test artifact that does NOT happen on a real HA volume. See CLAUDE.md.
 #
 # Usage:  IMAGE=ha-bar-assistant:test ./tests/smoke.sh
+#         PLATFORM=linux/arm64 IMAGE=... ./tests/smoke.sh   # emulated arch
 # Exit 0 = all checks passed; non-zero = a check failed (CI gate).
 ###############################################################################
 set -euo pipefail
 
 IMAGE="${IMAGE:-ha-bar-assistant:test}"
+# When the image's arch differs from the host (e.g. CI runs the arm64 build on an
+# amd64 runner under QEMU), docker run warns and guesses unless told the platform.
+# Pass PLATFORM (e.g. linux/arm64) to make it explicit and silence the mismatch.
+PLATFORM="${PLATFORM:-}"
+PLATFORM_ARG=()
+[ -n "$PLATFORM" ] && PLATFORM_ARG=(--platform "$PLATFORM")
 PORT="${PORT:-2118}"
 VOLUME="ba-smoke-data"
 CONTAINER="ba-smoke"
@@ -35,8 +42,8 @@ docker volume create "$VOLUME" >/dev/null
 docker run --rm -v "$VOLUME":/data alpine:3.20 sh -c 'printf "%s" "$1" > /data/options.json' _ \
   '{"MEILI_MASTER_KEY":"super-secret-key-987654321","API_URL":"http://localhost:2118/bar","MEILISEARCH_URL":"http://localhost:2118/search","ALLOW_REGISTRATION":true}'
 
-echo "==> Starting $IMAGE"
-docker run -d --name "$CONTAINER" -p "${PORT}:2118" -v "$VOLUME":/data "$IMAGE" >/dev/null
+echo "==> Starting $IMAGE${PLATFORM:+ (platform $PLATFORM)}"
+docker run -d "${PLATFORM_ARG[@]}" --name "$CONTAINER" -p "${PORT}:2118" -v "$VOLUME":/data "$IMAGE" >/dev/null
 
 echo "==> Waiting for the stack to boot (up to 180s)"
 ready=""
