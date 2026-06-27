@@ -30,7 +30,7 @@ single, s6-supervised image served on one port.
 | `renovate.json` | Automated upstream/dependency update PRs. |
 
 Pre-built images are published to GHCR
-(`ghcr.io/dvvarf/ha-addon-bar-assistant-{arch}`) on each release tag, so Home
+(`ghcr.io/dvvarf/ha-bar-assistant-app-{arch}`) on each release tag, so Home
 Assistant pulls a ready-made image instead of building locally.
 
 ## Development

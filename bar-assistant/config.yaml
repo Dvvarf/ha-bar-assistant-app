@@ -5,10 +5,10 @@ url: "https://github.com/karlomikus/bar-assistant"
 slug: "bar-assistant"
 # Pre-built multi-arch image published to GHCR by .github/workflows/publish.yaml.
 # Supervisor substitutes {arch} and appends ":<version>", pulling e.g.
-# ghcr.io/dvvarf/ha-addon-bar-assistant-aarch64:5.15.4.15.0 instead of building
+# ghcr.io/dvvarf/ha-bar-assistant-app-aarch64:5.15.4.15.0 instead of building
 # locally on the user's device. Bumping `version:` (below) to a tag that exists
 # in GHCR is what surfaces "update available" in Home Assistant.
-image: "ghcr.io/dvvarf/ha-addon-bar-assistant-{arch}"
+image: "ghcr.io/dvvarf/ha-bar-assistant-app-{arch}"
 init: false
 arch:
   - amd64
