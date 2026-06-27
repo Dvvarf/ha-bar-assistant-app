@@ -2,9 +2,9 @@ configuration:
   MEILI_MASTER_KEY:
     name: Meilisearch master key
     description: >-
-      Master key for the bundled Meilisearch engine. Change it from the default
-      and use at least 16 characters. Restart the add-on after changing it.
-      Default is an empty string.
+      Master key for the bundled Meilisearch engine. Required: set a private
+      value of at least 16 characters before starting -- the add-on will not
+      start while this is empty. Restart the add-on after changing it.
   API_URL:
     name: Bar Assistant API URL
     description: >-

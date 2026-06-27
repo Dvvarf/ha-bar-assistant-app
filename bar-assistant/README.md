@@ -10,7 +10,8 @@ Home Assistant add-on. Everything is reached on one published port, **2118**:
 ## First steps
 
 1. Install and open the **Configuration** tab.
-2. Set **`MEILI_MASTER_KEY`** to a private value (min 16 bytes).
+2. Set **`MEILI_MASTER_KEY`** to a private value (min 16 bytes). It ships empty,
+   so the add-on will not start until you set one.
 3. Set **`API_URL`** and **`MEILISEARCH_URL`** to your real host and port, keeping
    the `/bar` and `/search` suffixes — these are called by the browser, so they
    must be absolute and reachable from your device, e.g.

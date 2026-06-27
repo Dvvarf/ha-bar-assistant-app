@@ -192,7 +192,7 @@ an omitted optional dict (home-assistant/supervisor#4606). ba-prep reads them vi
 
 | Var | Value / default | Notes |
 | --- | --- | --- |
-| `MEILI_MASTER_KEY` | `please-change-me-min-16-bytes` | User option. **Must be changed.** |
+| `MEILI_MASTER_KEY` | _(empty)_ | User option. **Required.** Ships blank with no ENV fallback, so a blank option stays blank and Meilisearch (`MEILI_ENV=production`) refuses to start — the add-on fails closed instead of booting on a public placeholder. |
 | `MEILISEARCH_KEY` | = `MEILI_MASTER_KEY` | Derived alias; what Bar Assistant reads. |
 | `MEILISEARCH_HOST` | `http://127.0.0.1:7700` | Server-side connection (internal). |
 | `MEILI_HTTP_ADDR` | `127.0.0.1:7700` | Meilisearch bind addr. |

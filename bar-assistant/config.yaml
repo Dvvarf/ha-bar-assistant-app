@@ -28,7 +28,11 @@ ports:
 ports_description:
   2118/tcp: "Web UI (/), Bar Assistant API (/bar/), Meilisearch (/search/)"
 options:
-  MEILI_MASTER_KEY: "please-change-me-min-16-bytes"
+  # Empty on purpose: there is no safe default for a master key, so the add-on
+  # must not ship one. Left blank, the resolved key stays empty and Meilisearch
+  # (MEILI_ENV=production) refuses to start until the user sets a real value
+  # (min 16 bytes) -- failing closed instead of booting on a public placeholder.
+  MEILI_MASTER_KEY: ""
   API_URL: "http://homeassistant.local:2118/bar"
   MEILISEARCH_URL: "http://homeassistant.local:2118/search"
   ALLOW_REGISTRATION: true

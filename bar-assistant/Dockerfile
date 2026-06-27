@@ -174,11 +174,14 @@ ENV NGINX_HTTP_PORT=8081
 # internal/fixed (or only consumed by our own meilisearch/salt-rim services,
 # which source ba-prep's resolved env file directly).
 # ---------------------------------------------------------------------------
+# No MEILI_MASTER_KEY default here on purpose. resolve() falls back to this ENV
+# when the add-on option is blank, so a placeholder here would let the add-on
+# boot on a public key. Leaving it unset means a blank option stays blank, and
+# Meilisearch (MEILI_ENV=production) refuses to start without a real key.
 ENV MEILI_DB_PATH=/data/meilisearch \
     MEILI_HTTP_ADDR=127.0.0.1:7700 \
     MEILI_NO_ANALYTICS=true \
-    MEILI_ENV=production \
-    MEILI_MASTER_KEY=please-change-me-min-16-bytes
+    MEILI_ENV=production
 ENV MEILISEARCH_HOST=http://127.0.0.1:7700 \
     DB_CONNECTION=sqlite \
     DB_DATABASE=/data/bar-assistant/database.ba3.sqlite

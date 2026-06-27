@@ -26,6 +26,10 @@ All notable changes to this add-on are documented here. Versions follow the
   alternative SSO login is configured, which this add-on does not set up, so the
   toggle could never be used in practice. The upstream default (password login
   enabled) is left in place.
+- Ship `MEILI_MASTER_KEY` empty and drop its build-time fallback default. The
+  add-on now fails closed: with no key set, Meilisearch (`MEILI_ENV=production`)
+  refuses to start, instead of silently booting on a public placeholder key. Set
+  a private value of at least 16 bytes before starting.
 
 ## 5.15.4.15.1
 
