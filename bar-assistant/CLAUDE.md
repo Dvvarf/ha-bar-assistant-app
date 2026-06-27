@@ -34,6 +34,7 @@ This add-on lives in the **`bar-assistant/`** subfolder of a standard HA add-on
 | `config.yaml` | HA add-on manifest (ports, options/schema, webui, version, **`image:` for prebuilt GHCR pulls**). |
 | `CLAUDE.md` | This file — handoff notes + verified facts. Loaded into Claude Code's context each session. |
 | `README.md` / `DOCS.md` / `CHANGELOG.md` | Store listing, Documentation tab, and update notes. |
+| `icon.png` / `logo.png` | Store icon (256×256, the navy glass mark) and brand banner (1360×500), both derived from the upstream Bar Assistant API logo. Auto-detected by filename. |
 | `tests/smoke.sh` | Boot smoke test (build the image, run this) — also the CI gate. |
 
 Repo-root tooling: `scripts/check-version-sync.sh` (asserts `config.yaml`
@@ -48,8 +49,8 @@ build+smoke, `publish.yaml` → GHCR on a release tag).
   reads it). The base image is pinned via `ARG BUILD_FROM=barassistant/server:5.15`
   in the Dockerfile instead (minor tag — see "Versioning" below).
 
-**Not yet created** (optional polish, none exist today): `icon.png`, `logo.png`,
-`apparmor.txt`, `translations/en.yaml`.
+**Not yet created** (optional polish, none exist today): `apparmor.txt`,
+`translations/en.yaml`.
 
 ---
 
