@@ -1,0 +1,97 @@
+configuration:
+  MEILI_MASTER_KEY:
+    name: Meilisearch master key
+    description: >-
+      Master key for the bundled Meilisearch engine (also used as the internal
+      API-to-search key). Change it from the default and use at least 16 bytes.
+      Restart the add-on after changing it.
+  API_URL:
+    name: Bar Assistant API URL
+    description: >-
+      Browser-facing base URL for the Bar Assistant API. Must be reachable from
+      your device and end in /bar (e.g. http://homeassistant.local:2118/bar).
+      Update it if you remap the published port.
+  MEILISEARCH_URL:
+    name: Meilisearch URL
+    description: >-
+      Browser-facing base URL for Meilisearch. Must be reachable from your
+      device and end in /search (e.g. http://homeassistant.local:2118/search).
+      Update it if you remap the published port.
+  ALLOW_REGISTRATION:
+    name: Allow registration
+    description: >-
+      Allow new users to sign up. Turn this off after creating your own account
+      to keep the instance private.
+  APP_NAME:
+    name: App name
+    description: Display name shown by the app. Defaults to "Bar Assistant".
+  LOG_LEVEL:
+    name: Log level
+    description: >-
+      Logging verbosity for the Bar Assistant API. Defaults to "warning"; lower
+      it to "debug" or "info" when troubleshooting.
+  ENABLE_PASSWORD_LOGIN:
+    name: Enable password login
+    description: >-
+      Allow signing in with an email and password. Turn this off only if you
+      rely solely on SSO (not configured by this add-on).
+  ENABLE_FEEDS:
+    name: Enable feeds
+    description: Enable activity feeds. Disabled by default.
+  SESSION_LIFETIME:
+    name: Session lifetime
+    description: How long a login session stays valid, in minutes. Defaults to 120.
+  ai:
+    name: AI / LLM
+    description: >-
+      Optional AI features. Pick one provider; the single API key and URL are
+      routed to it automatically. Leave empty to keep AI off.
+    fields:
+      provider:
+        name: Provider
+        description: >-
+          AI provider to use: openai, anthropic, ollama, mistral, groq, xai,
+          gemini, deepseek, openrouter, elevenlabs or voyageai.
+      model:
+        name: Model
+        description: Model identifier for the chosen provider.
+      api_key:
+        name: API key
+        description: API key for the chosen provider (not needed for ollama).
+      base_url:
+        name: Base URL
+        description: >-
+          Optional custom endpoint, e.g. your Ollama URL or an
+          OpenAI-compatible gateway.
+      timeout:
+        name: Timeout
+        description: Request timeout in seconds. Defaults to 60.
+      image_provider:
+        name: Image provider
+        description: >-
+          Optional separate provider for image generation. If it differs from
+          the main provider it reuses the same API key.
+      image_model:
+        name: Image model
+        description: Optional model identifier used for image generation.
+      mcp_server:
+        name: MCP server
+        description: Enable the built-in MCP (Model Context Protocol) server.
+  redis:
+    name: Redis
+    description: >-
+      Optional external Redis server (this image ships none). Setting a host
+      moves cache and sessions off the local filesystem onto Redis. Leave empty
+      to keep them on file.
+    fields:
+      host:
+        name: Host
+        description: External Redis host. Setting this enables Redis.
+      port:
+        name: Port
+        description: Redis port. Defaults to 6379.
+      password:
+        name: Password
+        description: Optional password for the external Redis server.
+network:
+  2118/tcp: Web UI (/), Bar Assistant API (/bar/) and Meilisearch (/search/)
