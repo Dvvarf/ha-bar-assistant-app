@@ -1,0 +1,39 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  addon-linter:
+    name: Add-on config linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint add-on config
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: "./bar-assistant"
+
+  version-sync:
+    name: Version coupling guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version / LABEL / upstream tags agree
+        run: bash scripts/check-version-sync.sh
+
+  hadolint:
+    name: Dockerfile lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: bar-assistant/Dockerfile
+          # Heredocs + intentional root user are by design here (see CLAUDE.md);
+          # keep lint advisory rather than failing the build on style rules.
+          no-fail: true
