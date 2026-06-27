@@ -95,9 +95,29 @@ http {
         server_name _;
         root /var/www/salt-rim;
 
-        # Salt Rim web client (static SPA shipped in this image).
+        # config.js carries the runtime API_URL/MEILISEARCH_URL that ba-prep +
+        # envsubst bake from the user's add-on options on every boot. Served as a
+        # plain static file the browser would cache it indefinitely, so after a
+        # user changes an option (e.g. MEILISEARCH_URL's host) the page keeps
+        # replaying the stale value from the cached copy. Cap the cache at one day
+        # so an option change propagates within a day (or immediately on a hard
+        # reload) without re-fetching it on every single page load.
+        location = /config.js {
+            add_header Cache-Control "public, max-age=86400" always;
+            expires 1d;
+            try_files $uri =404;
+        }
+
+        # Salt Rim web client (static SPA shipped in this image). The SPA shell
+        # (index.html) must not be cached either, or a stale shell keeps pointing
+        # at old hashed assets / config; hashed assets under it stay cacheable.
         location / {
             try_files $uri $uri/ /index.html;
+        }
+
+        location = /index.html {
+            add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+            expires -1;
         }
 
         # Bar Assistant API under /bar/. The trailing slash on proxy_pass
