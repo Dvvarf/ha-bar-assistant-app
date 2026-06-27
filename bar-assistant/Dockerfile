@@ -404,12 +404,34 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/meilisearch/run \
              /etc/s6-overlay/s6-rc.d/salt-rim/run
 
 LABEL \
-  io.hass.version="5.15.4.15.1" \
+  io.hass.version="5.15.4.15.2" \
   io.hass.type="app" \
   io.hass.arch="aarch64|amd64" \
   io.hass.name="Bar Assistant stack" \
   io.hass.description="Meilisearch + Bar Assistant API + Salt Rim in one add-on"
 
 EXPOSE 2118
+
+# ---------------------------------------------------------------------------
+# Container healthcheck. s6's /init stays alive even when one of the three
+# inner services hangs (and s6 only restarts a longrun that *exits*, not one
+# that wedges), so without this HA/Docker would report the add-on healthy while
+# it is not responding. Probe all three independently, inside the container, so
+# a failure of ANY one flips the container to "unhealthy" (surfaced in the HA
+# UI and acted on by the watchdog) -- including Meilisearch, which the
+# config.yaml watchdog URL does not traverse:
+#   salt-rim SPA   http://127.0.0.1:2118/                 (published nginx)
+#   API (php-fpm)  http://127.0.0.1:8081/api/server/version (NGINX_HTTP_PORT,
+#                  no /bar prefix -- that is only added by the salt-rim proxy)
+#   meilisearch    http://127.0.0.1:7700/health
+# Long start-period: first boot runs migrations + index sync and can take a
+# minute+, so don't mark unhealthy while the stack is still coming up. curl is
+# already installed above.
+# ---------------------------------------------------------------------------
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:2118/ >/dev/null \
+   && curl -fsS http://127.0.0.1:8081/api/server/version >/dev/null \
+   && curl -fsS http://127.0.0.1:7700/health >/dev/null \
+   || exit 1
 
 # Keep the base image's s6 ENTRYPOINT (/init) -- it now supervises all three.

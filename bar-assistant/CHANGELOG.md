@@ -3,6 +3,18 @@
 All notable changes to this add-on are documented here. Versions follow the
 5-part `<BA_maj>.<BA_min>.<SR_maj>.<SR_min>.<pkg>` scheme described in `CLAUDE.md`.
 
+## 5.15.4.15.2
+
+- Make Home Assistant's add-on state detection reliable. Previously HA only
+  tracked the container's s6 `/init` process, which stays alive even when an
+  inner service (php-fpm/the API, Salt Rim's nginx, or Meilisearch) hangs, so a
+  wedged add-on still showed as "Started". Added two complementary checks:
+  - a Docker `HEALTHCHECK` that probes all three inner services independently,
+    so any one failing flips the container to "unhealthy" in the HA UI;
+  - a `watchdog` URL (`/bar/api/server/version`, end-to-end through the proxy)
+    so Supervisor auto-restarts the add-on when the probe fails (enable the
+    Watchdog toggle on the add-on page, which this surfaces).
+
 ## 5.15.4.15.1
 
 - Add optional add-on options (hidden until enabled): general toggles

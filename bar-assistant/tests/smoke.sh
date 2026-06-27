@@ -92,6 +92,23 @@ docker exec -u 0 "$CONTAINER" sh -c \
   'mkdir -p /data/bar-assistant/uploads/cocktails/1 && printf JPEG > /data/bar-assistant/uploads/cocktails/1/x.jpg && chown -R www-data:www-data /data/bar-assistant/uploads'
 check "upload served as static asset"  "200" "${BASE}/bar/uploads/cocktails/1/x.jpg"
 
+echo "==> Checking the container HEALTHCHECK reports healthy (up to 60s)"
+# The Dockerfile HEALTHCHECK starts "starting" during the start-period; poll
+# until Docker flips it to "healthy" so we exercise the instruction itself, not
+# just the underlying routes. A "none" status means no HEALTHCHECK is set.
+health=""
+for _ in $(seq 1 30); do
+    health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$CONTAINER" 2>/dev/null || echo none)"
+    [ "$health" = "healthy" ] && break
+    [ "$health" = "none" ] && break
+    sleep 2
+done
+if [ "$health" = "healthy" ]; then
+    echo "  ok   container reports healthy"
+else
+    echo "  FAIL container health = '${health:-unknown}' (want healthy)"; fail=1
+fi
+
 if [ "$fail" != 0 ]; then
     echo "==> SMOKE TEST FAILED" >&2
     docker logs "$CONTAINER" 2>&1 | tail -n 80 >&2

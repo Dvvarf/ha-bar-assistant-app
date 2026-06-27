@@ -1,5 +1,5 @@
 name: "Bar Assistant"
-version: "5.15.4.15.1"
+version: "5.15.4.15.2"
 description: "Meilisearch + Bar Assistant API + Salt Rim in a single add-on"
 url: "https://github.com/karlomikus/bar-assistant"
 slug: "bar-assistant"
@@ -16,6 +16,18 @@ arch:
   - aarch64
 webui: "http://[HOST]:[PORT:2118]"
 panel_icon: "mdi:glass-cocktail"
+# Application-level watchdog. Without this, HA only knows the container's s6
+# /init is alive -- which it always is, even when an inner service (php-fpm, the
+# API nginx, meilisearch) hangs -- so a wedged add-on still shows as "Started".
+# This probe goes through Salt Rim's nginx -> the API's nginx -> php-fpm (the
+# /bar prefix is stripped by the proxy), so a hang anywhere on that path fails
+# the check and Supervisor restarts the add-on (when the user's Watchdog toggle,
+# which this key surfaces, is on). A bare tcp:// probe would only confirm port
+# 2118 is accepting connections, which Salt Rim's nginx does even when the API
+# behind it is dead; the http path is a real end-to-end signal. Meilisearch is
+# not on this path -- the in-image Dockerfile HEALTHCHECK covers it (and all
+# three services) independently.
+watchdog: "http://[HOST]:[PORT:2118]/bar/api/server/version"
 ports:
   2118/tcp: 2118
 ports_description:
