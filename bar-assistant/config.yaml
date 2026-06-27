@@ -16,18 +16,13 @@ arch:
   - aarch64
 webui: "http://[HOST]:[PORT:2118]"
 panel_icon: "mdi:glass-cocktail"
-# Application-level watchdog. Without this, HA only knows the container's s6
-# /init is alive -- which it always is, even when an inner service (php-fpm, the
-# API nginx, meilisearch) hangs -- so a wedged add-on still shows as "Started".
-# This probe goes through Salt Rim's nginx -> the API's nginx -> php-fpm (the
-# /bar prefix is stripped by the proxy), so a hang anywhere on that path fails
-# the check and Supervisor restarts the add-on (when the user's Watchdog toggle,
-# which this key surfaces, is on). A bare tcp:// probe would only confirm port
-# 2118 is accepting connections, which Salt Rim's nginx does even when the API
-# behind it is dead; the http path is a real end-to-end signal. Meilisearch is
-# not on this path -- the in-image Dockerfile HEALTHCHECK covers it (and all
-# three services) independently.
-watchdog: "http://[HOST]:[PORT:2118]/bar/api/server/version"
+# Application-level health detection is done via the Dockerfile HEALTHCHECK, NOT
+# a `watchdog:` key here: the HA add-on linter rejects `watchdog` as obsolete
+# ("Use the native Docker HEALTHCHECK directive instead"). Modern Supervisor
+# drives its add-on watchdog off the container's HEALTHCHECK status, so the
+# HEALTHCHECK gives both the health indicator in the UI and the auto-restart
+# (when the user's Watchdog toggle is on) -- and it probes all three inner
+# services, including Meilisearch. See the HEALTHCHECK in the Dockerfile.
 ports:
   2118/tcp: 2118
 ports_description:

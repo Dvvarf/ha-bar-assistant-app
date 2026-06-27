@@ -417,9 +417,11 @@ EXPOSE 2118
 # inner services hangs (and s6 only restarts a longrun that *exits*, not one
 # that wedges), so without this HA/Docker would report the add-on healthy while
 # it is not responding. Probe all three independently, inside the container, so
-# a failure of ANY one flips the container to "unhealthy" (surfaced in the HA
-# UI and acted on by the watchdog) -- including Meilisearch, which the
-# config.yaml watchdog URL does not traverse:
+# a failure of ANY one flips the container to "unhealthy". Modern HA Supervisor
+# drives its add-on watchdog off this HEALTHCHECK status (the obsolete
+# config.yaml `watchdog:` key is rejected by the add-on linter), so this single
+# directive gives both the health indicator in the UI and the auto-restart when
+# the user's Watchdog toggle is on -- across all three services:
 #   salt-rim SPA   http://127.0.0.1:2118/                 (published nginx)
 #   API (php-fpm)  http://127.0.0.1:8081/api/server/version (NGINX_HTTP_PORT,
 #                  no /bar prefix -- that is only added by the salt-rim proxy)
