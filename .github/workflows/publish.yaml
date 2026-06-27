@@ -21,6 +21,14 @@ on:
         description: "Version to build (must equal config.yaml version)"
         required: true
 
+# Dedupe runs for the same version: a tag push and a Release published from that
+# same tag would otherwise both fire and re-push identical :version + :latest
+# images. cancel-in-progress:false lets the first run finish rather than killing a
+# half-done push to GHCR.
+concurrency:
+  group: publish-${{ github.ref_name }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   OWNER: dvvarf
