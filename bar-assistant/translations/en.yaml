@@ -2,34 +2,39 @@ configuration:
   MEILI_MASTER_KEY:
     name: Meilisearch master key
     description: >-
-      Master key for the bundled Meilisearch engine (also used as the internal
-      API-to-search key). Change it from the default and use at least 16 bytes.
-      Restart the add-on after changing it.
+      Master key for the bundled Meilisearch engine. Change it from the default
+      and use at least 16 characters. Restart the add-on after changing it.
+      Default is an empty string.
   API_URL:
     name: Bar Assistant API URL
     description: >-
       Browser-facing base URL for the Bar Assistant API. Must be reachable from
       your device and end in /bar (e.g. http://homeassistant.local:2118/bar).
       Update it if you remap the published port.
+      Defaults is `http://homeassistant.local:2118/bar`.
   MEILISEARCH_URL:
     name: Meilisearch URL
     description: >-
       Browser-facing base URL for Meilisearch. Must be reachable from your
       device and end in /search (e.g. http://homeassistant.local:2118/search).
       Update it if you remap the published port.
+      Defaults is `http://homeassistant.local:2118/search`.
   ALLOW_REGISTRATION:
-    name: Allow registration
+    name: Allow registrations
     description: >-
       Allow new users to sign up. Turn this off after creating your own account
       to keep the instance private.
+      Default is "enabled".
   APP_NAME:
     name: App name
-    description: Display name shown by the app. Defaults to "Bar Assistant".
+    description: >-
+      Display name shown by the app.
+      Default is "Bar Assistant".
   LOG_LEVEL:
     name: Log level
     description: >-
-      Logging verbosity for the Bar Assistant API. Defaults to "warning"; lower
-      it to "debug" or "info" when troubleshooting.
+      Logging verbosity for the Bar Assistant API. Use "debug" or "info" when troubleshooting.
+      Defaults to "warning".
   ENABLE_PASSWORD_LOGIN:
     name: Enable password login
     description: >-
@@ -37,10 +42,14 @@ configuration:
       rely solely on SSO (not configured by this add-on).
   ENABLE_FEEDS:
     name: Enable feeds
-    description: Enable activity feeds. Disabled by default.
+    description: >-
+      Enable activity feeds.
+      Default is "disabled".
   SESSION_LIFETIME:
     name: Session lifetime
-    description: How long a login session stays valid, in minutes. Defaults to 120.
+    description: >-
+      How long a login session stays valid, in minutes.
+      Default is 120 minutes.
   ai:
     name: AI / LLM
     description: >-
@@ -80,9 +89,8 @@ configuration:
   redis:
     name: Redis
     description: >-
-      Optional external Redis server (this image ships none). Setting a host
-      moves cache and sessions off the local filesystem onto Redis. Leave empty
-      to keep them on file.
+      Optional external Redis server. Setting a host moves cache and sessions
+      off the local filesystem onto Redis. Default: empty (use local file, not Redis)
     fields:
       host:
         name: Host
