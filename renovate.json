@@ -53,6 +53,16 @@
         "ARG BUILD_FROM=(?<depName>barassistant/server):(?<currentValue>[0-9]+\\.[0-9]+)"
       ],
       "datasourceTemplate": "docker"
+    },
+    {
+      "description": "Track the native ARM CI runner image. The github-runners manager only reads literal `runs-on:` values, not labels carried in `strategy.matrix` and referenced via `runs-on: ${{ matrix.runner }}`, so the arm runner pin is matched here instead. (amd64 uses `ubuntu-latest`, an unversioned alias Renovate intentionally leaves alone.)",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "runner:\\s+(?<depName>[a-z]+)-(?<currentValue>[0-9]+\\.[0-9]+-arm)"
+      ],
+      "datasourceTemplate": "github-runners",
+      "versioningTemplate": "docker"
     }
   ]
 }
