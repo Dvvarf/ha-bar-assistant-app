@@ -182,8 +182,8 @@ It does three things:
 The required knobs are minimal: one key (`MEILI_MASTER_KEY`) and the URLs.
 App-specific aliases are derived internally so users don't set them twice. Beyond
 those, `config.yaml` exposes **optional** options (hidden in the UI until used):
-top-level general toggles (`APP_NAME`, `LOG_LEVEL`, `ENABLE_PASSWORD_LOGIN`,
-`ENABLE_FEEDS`, `SESSION_LIFETIME`) and two nested groups, `ai` (single LLM
+top-level general toggles (`APP_NAME`, `LOG_LEVEL`, `ENABLE_FEEDS`,
+`SESSION_LIFETIME`) and two nested groups, `ai` (single LLM
 provider; ba-prep routes the generic `api_key`/`base_url` to the chosen provider's
 `<PROVIDER>_API_KEY`/`_URL`) and `redis` (external Redis for cache/sessions). The
 nested groups must stay present as empty dicts in `options:` — Supervisor rejects
@@ -192,7 +192,7 @@ an omitted optional dict (home-assistant/supervisor#4606). ba-prep reads them vi
 
 | Var | Value / default | Notes |
 | --- | --- | --- |
-| `MEILI_MASTER_KEY` | `please-change-me-min-16-bytes` | User option. **Must be changed.** |
+| `MEILI_MASTER_KEY` | _(empty)_ | User option. **Required.** Ships blank with no ENV fallback, so a blank option stays blank and Meilisearch (`MEILI_ENV=production`) refuses to start — the add-on fails closed instead of booting on a public placeholder. |
 | `MEILISEARCH_KEY` | = `MEILI_MASTER_KEY` | Derived alias; what Bar Assistant reads. |
 | `MEILISEARCH_HOST` | `http://127.0.0.1:7700` | Server-side connection (internal). |
 | `MEILI_HTTP_ADDR` | `127.0.0.1:7700` | Meilisearch bind addr. |
