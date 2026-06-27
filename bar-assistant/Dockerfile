@@ -145,8 +145,12 @@ ENV NGINX_HTTP_PORT=8081
 # that never imports /run/s6/container_environment -- services inherit the
 # Docker ENV instead, and Laravel's dotenv won't override an already-set env
 # var. So the user-overridable keys the API consumes (MEILISEARCH_KEY, APP_URL,
-# ALLOW_REGISTRATION) are deliberately NOT set as ENV here: that lets ba-prep
-# write them into Laravel's .env where they take effect. The remaining keys are
+# ALLOW_REGISTRATION, the AI/LLM keys, and the cache/session drivers) are
+# deliberately NOT set as ENV here: that lets ba-prep write them into Laravel's
+# .env where they take effect. CACHE_DRIVER/SESSION_DRIVER in particular MUST be
+# resolved by ba-prep -- the base image's bundled .env defaults them to `redis`
+# (upstream ships a Redis container), and this image has none, so ba-prep forces
+# `file` unless the user points at an external Redis. The remaining keys are
 # internal/fixed (or only consumed by our own meilisearch/salt-rim services,
 # which source ba-prep's resolved env file directly).
 # ---------------------------------------------------------------------------
@@ -157,9 +161,7 @@ ENV MEILI_DB_PATH=/data/meilisearch \
     MEILI_MASTER_KEY=please-change-me-min-16-bytes
 ENV MEILISEARCH_HOST=http://127.0.0.1:7700 \
     DB_CONNECTION=sqlite \
-    DB_DATABASE=/data/bar-assistant/database.ba3.sqlite \
-    CACHE_DRIVER=file \
-    SESSION_DRIVER=file
+    DB_DATABASE=/data/bar-assistant/database.ba3.sqlite
 ENV API_URL=http://homeassistant.local:2118/bar \
     MEILISEARCH_URL=http://homeassistant.local:2118/search \
     DEFAULT_LOCALE=en-US \
@@ -220,6 +222,17 @@ opt() {  # opt KEY -> option value (or empty). `has()` so boolean false survives
 }
 resolve() { v="$(opt "$1")"; [ -n "$v" ] && printf '%s' "$v" || printf '%s' "$2"; }
 
+# Nested getter for the `ai`/`redis` option groups: optp GROUP KEY -> value at
+# .GROUP.KEY when present, else empty. Same has()-based test as opt() so a
+# boolean false is not swallowed.
+optp() {
+    [ -r "$OPT" ] || return 0
+    command -v jq >/dev/null 2>&1 || return 0
+    jq -r --arg g "$1" --arg k "$2" \
+      'if (has($g) and (.[$g]|type=="object") and (.[$g]|has($k))) then .[$g][$k] else empty end' \
+      "$OPT" 2>/dev/null
+}
+
 MASTER_KEY="$(resolve MEILI_MASTER_KEY "${MEILI_MASTER_KEY:-}")"
 API="$(resolve API_URL "${API_URL:-}")"
 SEARCH_URL="$(resolve MEILISEARCH_URL "${MEILISEARCH_URL:-}")"
@@ -254,6 +267,51 @@ set_env APP_URL "${API}"
 set_env MEILISEARCH_KEY "${MASTER_KEY}"
 set_env MEILISEARCH_HOST "${MEILISEARCH_HOST:-http://127.0.0.1:7700}"
 set_env ALLOW_REGISTRATION "${REG}"
+
+# --- General optional toggles. Written only when the user actually set them;
+# left absent otherwise so the upstream config defaults apply. APP_NAME is quoted
+# because it may contain spaces. ---
+APP_NAME_VAL="$(opt APP_NAME)"
+[ -n "$APP_NAME_VAL" ] && set_env APP_NAME "\"${APP_NAME_VAL}\""
+for k in LOG_LEVEL ENABLE_PASSWORD_LOGIN ENABLE_FEEDS SESSION_LIFETIME; do
+    v="$(opt "$k")"
+    [ -n "$v" ] && set_env "$k" "$v"
+done
+
+# --- AI / LLM. The `ai.provider` dropdown picks a Prism provider; the single
+# generic api_key/base_url is routed to that provider's own *_API_KEY / *_URL
+# (the uppercased provider name matches every Prism provider, e.g.
+# anthropic -> ANTHROPIC_API_KEY / ANTHROPIC_URL). Ollama needs no key. ---
+AI_PROVIDER="$(optp ai provider)"
+if [ -n "$AI_PROVIDER" ]; then
+    set_env GEN_AI_PROVIDER "$AI_PROVIDER"
+    v="$(optp ai model)";   [ -n "$v" ] && set_env GEN_AI_MODEL "$v"
+    v="$(optp ai timeout)"; [ -n "$v" ] && set_env GEN_AI_TIMEOUT "$v"
+    PFX="$(printf '%s' "$AI_PROVIDER" | tr '[:lower:]' '[:upper:]')"
+    v="$(optp ai api_key)";  [ -n "$v" ] && set_env "${PFX}_API_KEY" "$v"
+    v="$(optp ai base_url)"; [ -n "$v" ] && set_env "${PFX}_URL" "$v"
+fi
+v="$(optp ai image_provider)"; [ -n "$v" ] && set_env GEN_AI_IMAGE_PROVIDER "$v"
+v="$(optp ai image_model)";    [ -n "$v" ] && set_env GEN_AI_IMAGE_MODEL "$v"
+v="$(optp ai mcp_server)";     [ -n "$v" ] && set_env ENABLE_MCP_SERVER "$v"
+
+# --- Redis. With a host set, switch cache + session to Redis and point at it.
+# QUEUE_CONNECTION stays the upstream `sync` default on purpose: this image runs
+# no queue worker, so a redis queue would strand background jobs. With no host,
+# force file drivers -- the base image's bundled .env defaults them to redis,
+# which would otherwise fail since this image ships no Redis. ---
+REDIS_HOST_VAL="$(optp redis host)"
+if [ -n "$REDIS_HOST_VAL" ]; then
+    set_env REDIS_HOST "$REDIS_HOST_VAL"
+    set_env REDIS_PORT "$(optp redis port | grep -E '^[0-9]+$' || printf 6379)"
+    v="$(optp redis password)"; [ -n "$v" ] && set_env REDIS_PASSWORD "$v"
+    set_env CACHE_DRIVER redis
+    set_env SESSION_DRIVER redis
+else
+    set_env CACHE_DRIVER file
+    set_env SESSION_DRIVER file
+fi
+
 chown www-data:www-data "$ENVFILE" 2>/dev/null || true
 exit 0
 PREP
@@ -346,7 +404,7 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/meilisearch/run \
              /etc/s6-overlay/s6-rc.d/salt-rim/run
 
 LABEL \
-  io.hass.version="5.15.4.15.0" \
+  io.hass.version="5.15.4.15.1" \
   io.hass.type="app" \
   io.hass.arch="aarch64|amd64" \
   io.hass.name="Bar Assistant stack" \

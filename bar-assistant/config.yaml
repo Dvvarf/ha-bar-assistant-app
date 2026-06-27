@@ -1,5 +1,5 @@
 name: "Bar Assistant"
-version: "5.15.4.15.0"
+version: "5.15.4.15.1"
 description: "Meilisearch + Bar Assistant API + Salt Rim in a single add-on"
 url: "https://github.com/karlomikus/bar-assistant"
 slug: "bar-assistant"
@@ -25,8 +25,35 @@ options:
   API_URL: "http://homeassistant.local:2118/bar"
   MEILISEARCH_URL: "http://homeassistant.local:2118/search"
   ALLOW_REGISTRATION: true
+  # ai/redis are nested groups. They MUST appear here (even empty) or Supervisor
+  # rejects the config -- optional nested dicts that are omitted fail validation
+  # (home-assistant/supervisor#4606). Empty = nothing configured; ba-prep then
+  # writes none of their keys, so AI stays off and cache/session stay on file.
+  ai: {}
+  redis: {}
 schema:
   MEILI_MASTER_KEY: "password"
   API_URL: "url"
   MEILISEARCH_URL: "url"
   ALLOW_REGISTRATION: "bool"
+  # --- General (all optional; hidden under "show unused optional" until set) ---
+  APP_NAME: "str?"
+  LOG_LEVEL: "list(debug|info|notice|warning|error|critical|alert|emergency)?"
+  ENABLE_PASSWORD_LOGIN: "bool?"
+  ENABLE_FEEDS: "bool?"
+  SESSION_LIFETIME: "int?"
+  # --- AI / LLM (single provider; one generic key/url routed to the chosen one) ---
+  ai:
+    provider: "list(openai|anthropic|ollama|mistral|groq|xai|gemini|deepseek|openrouter|elevenlabs|voyageai)?"
+    model: "str?"
+    api_key: "password?"
+    base_url: "url?"
+    timeout: "int?"
+    image_provider: "list(openai|anthropic|ollama|mistral|groq|xai|gemini|deepseek|openrouter|elevenlabs|voyageai)?"
+    image_model: "str?"
+    mcp_server: "bool?"
+  # --- Redis (external server; this image ships none) ---
+  redis:
+    host: "str?"
+    port: "port?"
+    password: "password?"

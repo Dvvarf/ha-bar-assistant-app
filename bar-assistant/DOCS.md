@@ -29,6 +29,49 @@ tab, update these options to match.
 > **Restart after changing options.** Some values are baked at boot; a restart
 > guarantees the API, search key, and URLs line up.
 
+### Optional options
+
+Everything below is **optional** and hidden until you expand **Show unused
+optional configuration options** in the add-on Configuration tab. Leave them
+untouched to keep Bar Assistant's defaults.
+
+**General**
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `APP_NAME` | `Bar Assistant` | Display name used by the API. |
+| `LOG_LEVEL` | `warning` | `debug`/`info`/`notice`/`warning`/`error`/`critical`/`alert`/`emergency`. |
+| `ENABLE_PASSWORD_LOGIN` | `true` | Set `false` if you only use SSO (not configured by this add-on). |
+| `ENABLE_FEEDS` | `false` | Enable activity feeds. |
+| `SESSION_LIFETIME` | `120` | Session length in minutes. |
+
+**AI / LLM** (`ai` group)
+
+Pick one provider; the single API key/URL is routed to it automatically.
+
+| Option | Notes |
+| --- | --- |
+| `provider` | `openai`, `anthropic`, `ollama`, `mistral`, `groq`, `xai`, `gemini`, `deepseek`, `openrouter`, `elevenlabs`, `voyageai`. |
+| `model` | Model id for the chosen provider. |
+| `api_key` | API key for the chosen provider (not needed for `ollama`). |
+| `base_url` | Optional custom endpoint (e.g. your Ollama URL, an OpenAI-compatible gateway). |
+| `timeout` | Request timeout in seconds (default 60). |
+| `image_provider` / `image_model` | Optional separate provider/model for image generation. If it differs from `provider`, it reuses the same `api_key`. |
+| `mcp_server` | Enable the built-in MCP server. |
+
+**Redis** (`redis` group)
+
+This image ships **no** Redis. Point these at an *external* Redis (e.g. a
+separate add-on) to move cache + sessions off the local filesystem. When `host`
+is set, cache and session drivers switch to Redis; the job queue stays `sync`
+(this add-on runs no queue worker).
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `host` | — | External Redis host. Setting this enables Redis. |
+| `port` | `6379` | |
+| `password` | — | Optional. |
+
 ## Persistence
 
 All state lives under `/data` (the HA-persistent volume):
