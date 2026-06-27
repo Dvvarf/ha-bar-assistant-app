@@ -20,14 +20,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Both runner images are version-pinned (not `-latest`) so the build
+          # environment only moves on a reviewed Renovate PR. The smoke test is
+          # a hard gate on both arches: each builds natively (no QEMU), so an
+          # arm64 failure is a real failure, not emulation flakiness.
           - arch: amd64
             platform: linux/amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - arch: aarch64
             platform: linux/arm64
-            # Native ARM runner -> the build and boot are no longer emulated, so
-            # the smoke test is a hard gate on both arches (was best-effort when
-            # aarch64 ran under QEMU).
             runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v5
