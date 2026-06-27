@@ -1,0 +1,58 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard"
+  ],
+  "timezone": "UTC",
+  "labels": ["dependencies"],
+  "dockerfile": {
+    "managers": ["dockerfile"]
+  },
+  "packageRules": [
+    {
+      "description": "Group GitHub Actions bumps together.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "labels": ["dependencies", "github-actions"]
+    },
+    {
+      "description": "Upstream images are deliberately pinned to MINOR tags (server:5.15, salt-rim:4.15, meilisearch:v1.15) that float on PATCH automatically (see bar-assistant/CLAUDE.md 'Versioning'). Surface minor/major moves as PRs for the maintainer to review -- because each also requires a coupled bump of the 5-part add-on version + Dockerfile LABEL, which no bot can do unattended.",
+      "matchManagers": ["dockerfile", "custom.regex"],
+      "matchPackageNames": [
+        "barassistant/server",
+        "barassistant/salt-rim",
+        "getmeili/meilisearch"
+      ],
+      "matchUpdateTypes": ["major", "minor"],
+      "groupName": "bar-assistant upstreams",
+      "labels": ["dependencies", "upstream", "needs-version-bump"],
+      "addLabels": ["needs-version-bump"],
+      "prBodyNotes": [
+        ":warning: This bumps an upstream MINOR/MAJOR tag. Before merging, update the coupled fields per bar-assistant/CLAUDE.md 'Versioning': `config.yaml` `version:`, the Dockerfile `io.hass.version` LABEL, and confirm `scripts/check-version-sync.sh` passes."
+      ]
+    },
+    {
+      "description": "Patch float happens via the minor tag at build time; do not open patch PRs for the pinned upstream tags.",
+      "matchManagers": ["dockerfile", "custom.regex"],
+      "matchPackageNames": [
+        "barassistant/server",
+        "barassistant/salt-rim",
+        "getmeili/meilisearch"
+      ],
+      "matchUpdateTypes": ["patch"],
+      "enabled": false
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "Track the ARG BUILD_FROM default tag (the dockerfile manager only reads FROM lines, not ARG defaults).",
+      "customType": "regex",
+      "managerFilePatterns": ["/bar-assistant/Dockerfile/"],
+      "matchStrings": [
+        "ARG BUILD_FROM=(?<depName>barassistant/server):(?<currentValue>[0-9]+\\.[0-9]+)"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ]
+}

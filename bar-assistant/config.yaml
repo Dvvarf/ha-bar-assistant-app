@@ -3,6 +3,13 @@ version: "5.15.4.15.0"
 description: "Meilisearch + Bar Assistant API + Salt Rim in a single add-on"
 url: "https://github.com/karlomikus/bar-assistant"
 slug: "bar-assistant"
+# Pre-built multi-arch image published to GHCR by .github/workflows/publish.yaml.
+# One manifest carries both amd64 and arm64, so no {arch} placeholder is needed --
+# Supervisor appends ":<version>" and the registry resolves the host's arch, e.g.
+# ghcr.io/dvvarf/ha-bar-assistant-app:5.15.4.15.0 -- instead of building locally
+# on the user's device. Bumping `version:` (below) to a tag that exists in GHCR is
+# what surfaces "update available" in Home Assistant.
+image: "ghcr.io/dvvarf/ha-bar-assistant-app"
 init: false
 arch:
   - amd64
