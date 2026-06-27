@@ -1,9 +1,10 @@
 name: Publish to GHCR
 
-# Builds and pushes the per-architecture add-on images that Home Assistant pulls.
-# HA substitutes {arch} in config.yaml's `image:` key, so each architecture is its
-# OWN single-arch image repo (ha-bar-assistant-app-amd64, ha-bar-assistant-app-aarch64)
-# -- not a combined multi-arch manifest.
+# Builds both architectures and pushes a single multi-arch manifest that Home
+# Assistant pulls (ghcr.io/dvvarf/ha-bar-assistant-app). buildx attaches both
+# linux/amd64 and linux/arm64 to one manifest, so config.yaml's `image:` needs
+# no {arch} placeholder -- the registry resolves the right arch at pull time.
+# This matches the current home-assistant/addons-example ("apps") template.
 #
 # Trigger: a pushed git tag matching the 5-part version, or a published Release.
 #   git tag 5.15.4.15.0 && git push origin 5.15.4.15.0
@@ -52,20 +53,12 @@ jobs:
           echo "version=$cfg_ver" >> "$GITHUB_OUTPUT"
 
   publish:
-    name: Build + push ${{ matrix.arch }}
+    name: Build + push multi-arch manifest
     needs: guard
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          - arch: amd64
-            platform: linux/amd64
-          - arch: aarch64
-            platform: linux/arm64
     steps:
       - uses: actions/checkout@v4
 
@@ -81,15 +74,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push ${{ matrix.arch }}
+      - name: Build and push multi-arch manifest
         uses: docker/build-push-action@v6
         with:
           context: ./bar-assistant
-          platforms: ${{ matrix.platform }}
+          platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
           tags: |
-            ${{ env.REGISTRY }}/${{ env.OWNER }}/ha-bar-assistant-app-${{ matrix.arch }}:${{ needs.guard.outputs.version }}
-            ${{ env.REGISTRY }}/${{ env.OWNER }}/ha-bar-assistant-app-${{ matrix.arch }}:latest
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/ha-bar-assistant-app:${{ needs.guard.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/ha-bar-assistant-app:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
