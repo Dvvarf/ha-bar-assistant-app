@@ -28,7 +28,7 @@ jobs:
             # CLAUDE.md already proved aarch64 boots natively on real hardware.
             smoke_required: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -52,6 +52,7 @@ jobs:
         continue-on-error: ${{ !matrix.smoke_required }}
         env:
           IMAGE: ha-bar-assistant:test
+          PLATFORM: ${{ matrix.platform }}
         run: bash bar-assistant/tests/smoke.sh
 
       - name: Note emulated smoke result
