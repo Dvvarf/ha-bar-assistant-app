@@ -1,5 +1,5 @@
 name: "Bar Assistant"
-version: "5.15.4.15.2"
+version: "5.15.4.15.3"
 description: "Meilisearch + Bar Assistant API + Salt Rim in a single add-on"
 url: "https://github.com/karlomikus/bar-assistant"
 slug: "bar-assistant"
@@ -33,8 +33,12 @@ options:
   # (MEILI_ENV=production) refuses to start until the user sets a real value
   # (min 16 bytes) -- failing closed instead of booting on a public placeholder.
   MEILI_MASTER_KEY: ""
-  API_URL: "http://homeassistant.local:2118/bar"
-  MEILISEARCH_URL: "http://homeassistant.local:2118/search"
+  # Single browser-facing origin (protocol://host:port, no suffix). ba-prep
+  # derives API_URL = BASE_URL/bar and MEILISEARCH_URL = BASE_URL/search -- the
+  # /bar and /search suffixes are fixed by the reverse-proxy layout, so there is
+  # nothing to configure there; only the host/port can vary. Exposing one option
+  # keeps the two derived URLs from ever drifting out of sync.
+  BASE_URL: "http://homeassistant.local:2118"
   ALLOW_REGISTRATION: true
   # ai/redis are nested groups. They MUST appear here (even empty) or Supervisor
   # rejects the config -- optional nested dicts that are omitted fail validation
@@ -44,8 +48,7 @@ options:
   redis: {}
 schema:
   MEILI_MASTER_KEY: "password"
-  API_URL: "url"
-  MEILISEARCH_URL: "url"
+  BASE_URL: "url"
   ALLOW_REGISTRATION: "bool"
   # --- General (all optional; hidden under "show unused optional" until set) ---
   APP_NAME: "str?"

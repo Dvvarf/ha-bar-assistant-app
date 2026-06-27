@@ -3,6 +3,17 @@
 All notable changes to this add-on are documented here. Versions follow the
 5-part `<BA_maj>.<BA_min>.<SR_maj>.<SR_min>.<pkg>` scheme described in `CLAUDE.md`.
 
+## 5.15.4.15.3
+
+- Replace the `API_URL` and `MEILISEARCH_URL` options with a single `BASE_URL`.
+  Both old options shared the same `protocol://host:port` origin and only
+  differed by a fixed suffix (`/bar` and `/search`) imposed by the reverse-proxy
+  layout, so configuring them separately was redundant and made it possible to
+  set mismatched hosts or omit a suffix. Now you set one address with no path;
+  the add-on derives both URLs internally (`BASE_URL/bar`, `BASE_URL/search`),
+  tolerating a trailing slash. **Breaking:** after updating, set `BASE_URL` (the
+  old per-URL options are gone) and restart the add-on.
+
 ## 5.15.4.15.2
 
 - Make Home Assistant's add-on state detection reliable. Previously HA only

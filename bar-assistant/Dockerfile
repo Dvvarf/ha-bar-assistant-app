@@ -122,7 +122,7 @@ http {
 
         # Bar Assistant API under /bar/. The trailing slash on proxy_pass
         # strips the /bar prefix (/bar/api/... -> /api/...), as the Bar
-        # Assistant docs require. Set API_URL=APP_URL=<host>:2118/bar
+        # Assistant docs require. ba-prep derives API_URL=APP_URL=BASE_URL/bar.
         location = /bar { return 301 /bar/; }
         location /bar/ {
             proxy_pass http://127.0.0.1:8081/;
@@ -135,7 +135,7 @@ http {
 
         # Meilisearch under /search/ (prefix stripped the same way).
         # The browser talks to it here; it is never published directly.
-        # Set MEILISEARCH_URL=<host>:2118/search
+        # ba-prep derives MEILISEARCH_URL=BASE_URL/search.
         location /search/ {
             proxy_pass http://127.0.0.1:7700/;
             proxy_http_version 1.1;
@@ -185,8 +185,10 @@ ENV MEILI_DB_PATH=/data/meilisearch \
 ENV MEILISEARCH_HOST=http://127.0.0.1:7700 \
     DB_CONNECTION=sqlite \
     DB_DATABASE=/data/bar-assistant/database.ba3.sqlite
-ENV API_URL=http://homeassistant.local:2118/bar \
-    MEILISEARCH_URL=http://homeassistant.local:2118/search \
+# Single browser-facing origin (protocol://host:port, no suffix). ba-prep
+# appends the fixed /bar and /search suffixes to derive API_URL and
+# MEILISEARCH_URL -- see the resolve/derive block in ba-prep below.
+ENV BASE_URL=http://homeassistant.local:2118 \
     DEFAULT_LOCALE=en-US \
     MAILS_ENABLED=false
 
@@ -257,8 +259,14 @@ optp() {
 }
 
 MASTER_KEY="$(resolve MEILI_MASTER_KEY "${MEILI_MASTER_KEY:-}")"
-API="$(resolve API_URL "${API_URL:-}")"
-SEARCH_URL="$(resolve MEILISEARCH_URL "${MEILISEARCH_URL:-}")"
+# Single configurable origin -> the two browser-facing URLs. The /bar and
+# /search suffixes are fixed by the reverse-proxy layout (nginx strips them
+# before forwarding), so they are appended here rather than exposed as options.
+# Tolerate a trailing slash on BASE_URL so we never emit a doubled `//bar`.
+BASE="$(resolve BASE_URL "${BASE_URL:-}")"
+BASE="${BASE%/}"
+API="${BASE}/bar"
+SEARCH_URL="${BASE}/search"
 REG="$(resolve ALLOW_REGISTRATION true)"
 
 # (1) Sourceable env for our own services (meilisearch, salt-rim). MEILISEARCH_KEY
@@ -427,7 +435,7 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/meilisearch/run \
              /etc/s6-overlay/s6-rc.d/salt-rim/run
 
 LABEL \
-  io.hass.version="5.15.4.15.2" \
+  io.hass.version="5.15.4.15.3" \
   io.hass.type="app" \
   io.hass.arch="aarch64|amd64" \
   io.hass.name="Bar Assistant stack" \

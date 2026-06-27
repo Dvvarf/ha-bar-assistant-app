@@ -5,20 +5,14 @@ configuration:
       Master key for the bundled Meilisearch engine. Required: set a private
       value of at least 16 characters before starting -- the add-on will not
       start while this is empty. Restart the add-on after changing it.
-  API_URL:
-    name: Bar Assistant API URL
+  BASE_URL:
+    name: Base URL
     description: >-
-      Browser-facing base URL for the Bar Assistant API. Must be reachable from
-      your device and end in /bar (e.g. http://homeassistant.local:2118/bar).
-      Update it if you remap the published port.
-      Defaults is `http://homeassistant.local:2118/bar`.
-  MEILISEARCH_URL:
-    name: Meilisearch URL
-    description: >-
-      Browser-facing base URL for Meilisearch. Must be reachable from your
-      device and end in /search (e.g. http://homeassistant.local:2118/search).
-      Update it if you remap the published port.
-      Defaults is `http://homeassistant.local:2118/search`.
+      Browser-facing address of this add-on, as protocol://host:port with no
+      path (e.g. http://homeassistant.local:2118). It must be reachable from
+      your device; the API and search paths (/bar and /search) are added
+      automatically. Update it if you remap the published port.
+      Default is `http://homeassistant.local:2118`.
   ALLOW_REGISTRATION:
     name: Allow registrations
     description: >-
