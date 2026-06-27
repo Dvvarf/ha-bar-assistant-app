@@ -53,6 +53,16 @@
         "ARG BUILD_FROM=(?<depName>barassistant/server):(?<currentValue>[0-9]+\\.[0-9]+)"
       ],
       "datasourceTemplate": "docker"
+    },
+    {
+      "description": "Track the version-pinned CI runner images (both amd64 `ubuntu-24.04` and arm64 `ubuntu-24.04-arm`). The github-runners manager only reads literal `runs-on:` values, not labels carried in `strategy.matrix` and referenced via `runs-on: ${{ matrix.runner }}`, so the pins are matched here instead. Docker versioning keeps each on its own stream (the `-arm` variant upgrades to `-arm`, the plain one to plain).",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "runner:\\s+(?<depName>[a-z]+)-(?<currentValue>[0-9]+\\.[0-9]+(?:-arm)?)\\b"
+      ],
+      "datasourceTemplate": "github-runners",
+      "versioningTemplate": "docker"
     }
   ]
 }

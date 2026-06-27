@@ -12,29 +12,31 @@ on:
 jobs:
   build-and-test:
     name: ${{ matrix.arch }} build + smoke
-    runs-on: ubuntu-latest
+    # Each arch builds on a runner of its own architecture, so the build is
+    # always native -- no QEMU emulation. arm64 uses GitHub's free hosted ARM
+    # runner (public repos), which is far faster than the old emulated build.
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Both runner images are version-pinned (not `-latest`) so the build
+          # environment only moves on a reviewed Renovate PR. The smoke test is
+          # a hard gate on both arches: each builds natively (no QEMU), so an
+          # arm64 failure is a real failure, not emulation flakiness.
           - arch: amd64
             platform: linux/amd64
-            # amd64 runs natively on the runner -> the hard gate.
-            smoke_required: true
+            runner: ubuntu-24.04
           - arch: aarch64
             platform: linux/arm64
-            # aarch64 boots under QEMU emulation (slow/occasionally flaky); the
-            # build succeeding is the hard requirement, the boot is best-effort.
-            # CLAUDE.md already proved aarch64 boots natively on real hardware.
-            smoke_required: false
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
+      # No "Set up QEMU" step: each leg builds its own native platform on a
+      # matching runner, so cross-arch emulation is never needed.
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build image (${{ matrix.platform }})
         uses: docker/build-push-action@v6
@@ -48,13 +50,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
       - name: Smoke test
-        id: smoke
-        continue-on-error: ${{ !matrix.smoke_required }}
         env:
           IMAGE: ha-bar-assistant:test
           PLATFORM: ${{ matrix.platform }}
         run: bash bar-assistant/tests/smoke.sh
-
-      - name: Note emulated smoke result
-        if: ${{ !matrix.smoke_required && steps.smoke.outcome == 'failure' }}
-        run: echo "::warning::aarch64 smoke test failed under QEMU emulation (non-blocking); build succeeded."
