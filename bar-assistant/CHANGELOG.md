@@ -3,7 +3,7 @@
 All notable changes to this add-on are documented here. Versions follow the
 5-part `<BA_maj>.<BA_min>.<SR_maj>.<SR_min>.<pkg>` scheme described in `CLAUDE.md`.
 
-## 5.15.4.15.4
+## 5.15.4.15.3
 
 - Update bundled Meilisearch from v1.15 to v1.48, and make Meilisearch version
   jumps safe. Meilisearch refuses to boot when a newer engine opens a database
@@ -18,8 +18,6 @@ All notable changes to this add-on are documented here. Versions follow the
   search results fill in progressively after boot. The upgrade path is covered
   by the boot smoke test, which seeds an older on-disk Meilisearch version and
   asserts the add-on still comes up healthy.
-
-## 5.15.4.15.3
 
 - Fix php-fpm failing to start (`ALERT: [pool www] user has not been defined` ->
   `FPM initialization failed`). The add-on runs the serversideup base as `root`

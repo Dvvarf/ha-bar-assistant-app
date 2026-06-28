@@ -556,7 +556,7 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/meilisearch/run \
              /etc/s6-overlay/s6-rc.d/salt-rim/run
 
 LABEL \
-  io.hass.version="5.15.4.15.4" \
+  io.hass.version="5.15.4.15.3" \
   io.hass.type="app" \
   io.hass.arch="aarch64|amd64" \
   io.hass.name="Bar Assistant stack" \
