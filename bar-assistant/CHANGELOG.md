@@ -18,6 +18,14 @@ All notable changes to this add-on are documented here. Versions follow the
   search results fill in progressively after boot. The upgrade path is covered
   by the boot smoke test, which seeds an older on-disk Meilisearch version and
   asserts the add-on still comes up healthy.
+- After a Meilisearch rebuild, force browser sessions to re-login so search keeps
+  working. A rebuild gives Meilisearch new scoped-key UIDs, so each browser's
+  cached search token becomes stale and searches fail with "invalid API key"
+  until the client re-fetches it (which Salt Rim only does on login). The
+  `meili-reindex` step now invalidates the login sessions (Sanctum tokens with an
+  expiry) after regenerating the keys, so users are prompted to log back in and
+  pick up the fresh token. Permanent API tokens (created without an expiry, e.g.
+  for integrations) are left untouched.
 
 - Fix php-fpm failing to start (`ALERT: [pool www] user has not been defined` ->
   `FPM initialization failed`). The add-on runs the serversideup base as `root`

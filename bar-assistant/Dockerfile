@@ -464,11 +464,27 @@ reindex() {
         sleep 1
     done
     cd /var/www/cocktails || return 0
-    # A wipe discards Meilisearch's scoped API keys; regenerate them (-f) so each
-    # bar's stored search token matches the new keys, then flush + reimport all
-    # searchable models. Best-effort: failure leaves search empty but must not
-    # affect container health. QUEUE_CONNECTION=sync runs the queued job inline.
+    # A wipe discards Meilisearch's scoped API keys; regenerate them (-f) FIRST so
+    # each bar's stored search token matches the new keys before we force clients
+    # to re-fetch it (below). Best-effort: failure leaves search empty but must
+    # not affect container health.
     s6-setuidgid www-data php artisan bar:setup-meilisearch -f >/dev/null 2>&1 || true
+
+    # Force browser sessions to re-login so they pick up the regenerated search
+    # token. After a rebuild Meilisearch issues new scoped-key UIDs, so every
+    # browser's CACHED search token is stale and Meilisearch rejects searches with
+    # "invalid API key". Salt Rim only re-fetches that token on login, so we
+    # invalidate the login sessions here. Bar Assistant's login tokens are always
+    # created with a 14-day expiry, while user-created integration tokens default
+    # to no expiry -- so deleting only rows WHERE expires_at IS NOT NULL busts the
+    # browser sessions (forcing the re-login that refreshes the token) while
+    # sparing permanent API tokens. Done via PDO so we need neither tinker (absent
+    # in the prod image) nor the sqlite3 CLI; guarded + best-effort.
+    db="${DB_DATABASE:-/data/bar-assistant/database.ba3.sqlite}"
+    s6-setuidgid www-data php -r 'if(is_file($argv[1])){try{(new PDO("sqlite:".$argv[1]))->exec("DELETE FROM personal_access_tokens WHERE expires_at IS NOT NULL");}catch(Throwable $e){}}' "$db" >/dev/null 2>&1 || true
+
+    # Flush + reimport all searchable models (documents). QUEUE_CONNECTION=sync
+    # runs the queued RefreshSearchIndex job inline; results fill in progressively.
     s6-setuidgid www-data php artisan bar:refresh-search --clear >/dev/null 2>&1 || true
     rm -f /run/bar-assistant.meili-rebuild
 }

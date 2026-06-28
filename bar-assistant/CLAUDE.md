@@ -184,19 +184,33 @@ large jump). Instead we treat Meilisearch as a **rebuildable secondary index** �
    the incompatible DB is already gone, so the engine never sees it.
 2. **Reindex in the `meili-reindex` oneshot** (after `99-bass`, which recreated the
    indexes/settings/keys): `bar:setup-meilisearch -f` (regenerate the scoped search
-   keys a wipe destroyed, so each bar's stored token matches) then
-   `bar:refresh-search --clear` (flush + reimport all searchable models). The
-   queued `RefreshSearchIndex` job runs **inline** because `QUEUE_CONNECTION=sync`
-   (no worker). The `up` **backgrounds** this so a long/failed reindex never gates
-   bring-up or health — the container reports `healthy` immediately and search
-   results fill in progressively. A `/run/bar-assistant.meili-rebuild` marker
-   (set by the purge) gates it, so a normal boot does no work.
+   keys a wipe destroyed, so each bar's stored token matches), then **force a
+   re-login** (see below), then `bar:refresh-search --clear` (flush + reimport all
+   searchable models). The queued `RefreshSearchIndex` job runs **inline** because
+   `QUEUE_CONNECTION=sync` (no worker). The `up` **backgrounds** this so a
+   long/failed reindex never gates bring-up or health — the container reports
+   `healthy` immediately and search results fill in progressively. A
+   `/run/bar-assistant.meili-rebuild` marker (set by the purge) gates it, so a
+   normal boot does no work.
+
+   **Why force a re-login:** a rebuild gives Meilisearch new scoped-key UIDs, so
+   the search token Salt Rim **cached in the browser** is stale and Meilisearch
+   rejects searches with `invalid API key`. Salt Rim only re-fetches that token on
+   login, so after regenerating the keys we delete the **expiring** Sanctum tokens
+   (`DELETE FROM personal_access_tokens WHERE expires_at IS NOT NULL`) to force a
+   re-login. Login tokens always carry a 14-day expiry; user-created integration
+   tokens default to *no* expiry, so this busts browser sessions but spares
+   permanent API tokens. Done via PDO (no tinker in prod / no `sqlite3` CLI),
+   guarded + best-effort. Ordering matters: keys are regenerated **before** the
+   session bust so the re-login fetches a *valid* token.
 
 **Coupling/brittleness:** this depends on the `bar:setup-meilisearch` /
-`bar:refresh-search` command names (Bar Assistant CLI) and the `VERSION` file
-layout (Meilisearch). All calls are best-effort (`|| true`) and fail-safe — a
-drifted contract leaves search empty but never wedges boot. The smoke test
-exercising a seeded-old-`VERSION` upgrade is the guard against silent drift.
+`bar:refresh-search` command names (Bar Assistant CLI), the `VERSION` file layout
+(Meilisearch), and the `personal_access_tokens` table + its `expires_at` column
+(Sanctum/Bar Assistant convention) for the session bust. All calls are
+best-effort (`|| true`) and fail-safe — a drifted contract leaves search empty
+or sessions intact but never wedges boot. The smoke test exercising a
+seeded-old-`VERSION` upgrade is the guard against silent drift.
 
 **Why the on-disk `VERSION` is a reliable trigger:** Meilisearch writes its own
 version into `$MEILI_DB_PATH/VERSION` when it creates/opens the DB, and that value
