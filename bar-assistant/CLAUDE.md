@@ -90,7 +90,7 @@ section left-to-right, so ordering stays monotonic
 strict 3-part semver — that's fine; AwesomeVersion handles arbitrary dotted lengths.
 
 **Why the upstreams are pinned to MINOR tags** (`server:5.15`, `salt-rim:4.15`,
-`meilisearch:v1.15`) rather than floating majors: the embedded `major.minor` fields
+`meilisearch:v1.48`) rather than floating majors: the embedded `major.minor` fields
 can only honestly mirror the upstreams if they're fixed at build time. Minor tags
 still float on *patch*, so security/patch updates still flow in automatically — they
 just land as a `<pkg>` bump here.
@@ -124,6 +124,9 @@ only, no upstream move).
     `/etc/s6-overlay/s6-rc.d/`, registered in the `user` bundle.
   - A **`prep` oneshot** runs `ba-prep.sh`; `meilisearch` and `salt-rim` declare a
     dependency on it (`dependencies.d/prep`).
+  - A **`meili-reindex` oneshot** (ordered after `99-bass`) repopulates the
+    Meilisearch index from SQLite **after a DB purge** — see "Meilisearch version
+    jumps" below. Its `up` backgrounds the reindex so it never gates bring-up.
   - `ENTRYPOINT` is left as the base image's `/init`. No `CMD`. `config.yaml` sets
     `init: false` (required for s6-overlay v3 add-ons).
 - **Runs as `USER root`** so it can manage `/data` and write the s6 container
@@ -153,6 +156,57 @@ It does three things:
 3. Maps HA add-on options (`/data/options.json`) into the **s6 container
    environment** (`/run/s6/container_environment/<VAR>`) so each `with-contenv`
    service picks them up. HA options do **not** auto-map to env, hence this step.
+4. **Meilisearch version guard** (see below): purges `/data/meilisearch` when the
+   on-disk DB version doesn't match the engine, so a version bump can't crash-loop
+   the engine.
+
+---
+
+## Meilisearch version jumps (rebuild, don't migrate)
+
+Meilisearch ties its **on-disk DB** to the engine version that created it. A newer
+engine opening an older DB **refuses to boot** (`database version X is incompatible
+with engine version Y`) and exits — which would crash-loop the `meilisearch`
+longrun and wedge the add-on after a tag bump. Note this is a **DB-format** concern
+only: Meilisearch's HTTP API is stable across `v1.x` (Laravel Scout `^10.4` +
+`meilisearch-php ^1.0` stay compatible), and the on-disk format is explicitly
+exempted from that guarantee (it can break on a MINOR bump).
+
+We don't migrate the DB (the dumpless upgrade is experimental and risky across a
+large jump). Instead we treat Meilisearch as a **rebuildable secondary index** —
+**SQLite is the source of truth** — and rebuild it from scratch on a mismatch:
+
+1. **Purge in `prep`** (`ba-prep.sh`, before the `meilisearch` longrun starts):
+   compare `/data/meilisearch/VERSION` (Meilisearch's own file) major.minor against
+   `meilisearch --version`; if they differ, `rm -rf` the data dir. An empty dir is
+   always compatible, so the engine boots clean and `meili-ready`/HEALTHCHECK come
+   up normally. **The purge must live in `prep`** — by the time the engine starts,
+   the incompatible DB is already gone, so the engine never sees it.
+2. **Reindex in the `meili-reindex` oneshot** (after `99-bass`, which recreated the
+   indexes/settings/keys): `bar:setup-meilisearch -f` (regenerate the scoped search
+   keys a wipe destroyed, so each bar's stored token matches) then
+   `bar:refresh-search --clear` (flush + reimport all searchable models). The
+   queued `RefreshSearchIndex` job runs **inline** because `QUEUE_CONNECTION=sync`
+   (no worker). The `up` **backgrounds** this so a long/failed reindex never gates
+   bring-up or health — the container reports `healthy` immediately and search
+   results fill in progressively. A `/run/bar-assistant.meili-rebuild` marker
+   (set by the purge) gates it, so a normal boot does no work.
+
+**Coupling/brittleness:** this depends on the `bar:setup-meilisearch` /
+`bar:refresh-search` command names (Bar Assistant CLI) and the `VERSION` file
+layout (Meilisearch). All calls are best-effort (`|| true`) and fail-safe — a
+drifted contract leaves search empty but never wedges boot. The smoke test
+exercising a seeded-old-`VERSION` upgrade is the guard against silent drift.
+
+**Why the on-disk `VERSION` is a reliable trigger:** Meilisearch writes its own
+version into `$MEILI_DB_PATH/VERSION` when it creates/opens the DB, and that value
+**persists on the HA volume across restarts** until an engine actually rewrites it.
+On an upgrade boot, `prep` runs *before* the engine, so it reads the version the
+*previous* (older) engine recorded, sees the mismatch, and purges — only *then*
+does the new engine boot and write the new version. So there is no special "force"
+flag: the genuine version recorded by the prior engine is the signal. The CI smoke
+test validates this by seeding an older `VERSION` while the container is stopped
+and asserting it still comes up `healthy`.
 
 ---
 
@@ -344,8 +398,11 @@ image or the musl-lib copy starts breaking across Meilisearch upgrades.
    serversideup/docker-php #533). This can resurface if a base **patch** bump (the
    `server:5.15` tag floats on patch) renames/relocates that pool file — the smoke
    test's API health check is the guard.
-2. **Meilisearch on aarch64.** VERIFIED: the copied binary (`meilisearch 1.15.2`)
+2. **Meilisearch on aarch64.** VERIFIED on `meilisearch 1.15.2`: the copied binary
    execs and serves on aarch64 and amd64 with its musl deps (fix #2 above).
+   **Re-verify after the v1.48 bump** — the musl-lib copy paths (`/bin/meilisearch`,
+   `/lib/ld-musl-*.so.1`, `/usr/lib/libgcc_s.so.1`) are unverified across that span;
+   a real build + smoke on both arches is the check.
 3. **First-boot options timing.** Bar Assistant's one-time setup may run before
    option-derived env is fully in place. **After changing add-on options, restart
    the add-on** so keys/URLs line up. (Mitigated by fix #6's ordering, but the s6
