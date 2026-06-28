@@ -6,9 +6,6 @@
   ],
   "timezone": "UTC",
   "labels": ["dependencies"],
-  "dockerfile": {
-    "managers": ["dockerfile"]
-  },
   "packageRules": [
     {
       "description": "Group GitHub Actions bumps together.",
