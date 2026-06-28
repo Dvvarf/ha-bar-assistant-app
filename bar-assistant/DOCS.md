@@ -40,7 +40,7 @@ untouched to keep Bar Assistant's defaults.
 | Option | Default | Notes |
 | --- | --- | --- |
 | `APP_NAME` | `Bar Assistant` | Display name used by the API. |
-| `LOG_LEVEL` | `warning` | `debug`/`info`/`notice`/`warning`/`error`/`critical`/`alert`/`emergency`. |
+| `LOG_LEVEL` | `warning` | `debug`/`info`/`notice`/`warning`/`error`/`critical`/`alert`/`emergency`. Also sets Meilisearch's verbosity (mapped onto its `OFF`/`ERROR`/`WARN`/`INFO`/`DEBUG`/`TRACE` scale), so the default `warning` keeps Meilisearch's `INFO` chatter out of the log. |
 | `ENABLE_FEEDS` | `false` | Enable activity feeds. |
 | `SESSION_LIFETIME` | `120` | Session length in minutes. |
 

@@ -334,8 +334,16 @@ image or the musl-lib copy starts breaking across Meilisearch upgrades.
 ## Things to verify / open risks
 
 1. **serversideup running as root.** We set `USER root`; serversideup is normally
-   rootless. VERIFIED on aarch64: it still runs php-fpm as `www-data` and nginx
-   workers as the `nginx` user (uid 997). No issue observed.
+   rootless. php-fpm runs workers as `www-data` and nginx workers as the `nginx`
+   user (uid 997). **Caveat (fixed):** php-fpm refuses to run workers as root and,
+   when its master is root, requires each pool to name a non-root `user`/`group`.
+   serversideup's pool config omits those (unneeded while rootless), so `USER root`
+   made php-fpm abort with `[pool www] user has not been defined` ->
+   `FPM initialization failed`. The Dockerfile appends `user = www-data` /
+   `group = www-data` to `docker-php-serversideup-pool.conf` to fix this (see
+   serversideup/docker-php #533). This can resurface if a base **patch** bump (the
+   `server:5.15` tag floats on patch) renames/relocates that pool file — the smoke
+   test's API health check is the guard.
 2. **Meilisearch on aarch64.** VERIFIED: the copied binary (`meilisearch 1.15.2`)
    execs and serves on aarch64 and amd64 with its musl deps (fix #2 above).
 3. **First-boot options timing.** Bar Assistant's one-time setup may run before
