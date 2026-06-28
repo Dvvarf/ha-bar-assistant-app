@@ -109,6 +109,56 @@ else
     echo "  FAIL container health = '${health:-unknown}' (want healthy)"; fail=1
 fi
 
+# ---------------------------------------------------------------------------
+# Upgrade-path test: simulate an add-on built against a NEWER Meilisearch engine
+# being started on a /data created by an OLDER one. We stamp an old version into
+# the on-disk Meilisearch VERSION file (read by ba-prep's guard BEFORE the engine
+# starts) and restart. ba-prep must purge the stale DB so the engine boots clean;
+# if the purge fails, Meilisearch refuses to boot on the incompatible DB and the
+# container never reaches healthy -- so this phase fails. (We don't assert the
+# index repopulated, only that the upgrade boots healthy and the stale DB was
+# purged.)
+# ---------------------------------------------------------------------------
+echo "==> Upgrade-path test: seed an older Meilisearch DB version and restart"
+docker stop "$CONTAINER" >/dev/null
+docker run --rm -v "$VOLUME":/data alpine:3.20 sh -c 'printf "1.15.0\n" > /data/meilisearch/VERSION'
+docker start "$CONTAINER" >/dev/null
+
+echo "==> Waiting for the stack to come back up after the simulated upgrade (up to 180s)"
+ready=""
+for _ in $(seq 1 90); do
+    if curl -fsS "${BASE}/bar/api/server/version" >/dev/null 2>&1; then ready=1; break; fi
+    sleep 2
+done
+if [ -z "$ready" ]; then
+    echo "  FAIL stack did not come back up after the simulated upgrade"; fail=1
+    docker logs "$CONTAINER" 2>&1 | tail -n 80 >&2
+fi
+
+check "Meilisearch health after upgrade" "200" "${BASE}/search/health"
+
+echo "==> Confirming the stale Meilisearch DB was purged (VERSION no longer 1.15.x)"
+upv="$(docker run --rm -v "$VOLUME":/data alpine:3.20 sh -c 'cat /data/meilisearch/VERSION 2>/dev/null' || true)"
+case "$upv" in
+    1.15.*) echo "  FAIL stale VERSION ($upv) still present -- purge did not run"; fail=1 ;;
+    "")     echo "  FAIL no VERSION file after upgrade boot"; fail=1 ;;
+    *)      echo "  ok   stale DB purged; Meilisearch recreated VERSION ($upv)" ;;
+esac
+
+echo "==> Confirming the container is healthy again after the upgrade (up to 60s)"
+health=""
+for _ in $(seq 1 30); do
+    health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$CONTAINER" 2>/dev/null || echo none)"
+    [ "$health" = "healthy" ] && break
+    [ "$health" = "none" ] && break
+    sleep 2
+done
+if [ "$health" = "healthy" ]; then
+    echo "  ok   container healthy after upgrade"
+else
+    echo "  FAIL container health = '${health:-unknown}' after upgrade (want healthy)"; fail=1
+fi
+
 if [ "$fail" != 0 ]; then
     echo "==> SMOKE TEST FAILED" >&2
     docker logs "$CONTAINER" 2>&1 | tail -n 80 >&2

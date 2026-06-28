@@ -15,11 +15,9 @@ All notable changes to this add-on are documented here. Versions follow the
   `meili-reindex` oneshot then repopulates the index from the database in the
   background (`bar:setup-meilisearch -f` + `bar:refresh-search --clear`). The
   reindex is detached so it never delays the container reaching `healthy` —
-  search results fill in progressively after boot.
-- **Note (temporary):** this build forces the purge + reindex on **every** boot
-  (`FORCE_MEILI_REBUILD=1` in `ba-prep`) to validate the upgrade path end to end.
-  This must be set back to `0` before a user-facing release so normal restarts
-  don't needlessly rebuild the index.
+  search results fill in progressively after boot. The upgrade path is covered
+  by the boot smoke test, which seeds an older on-disk Meilisearch version and
+  asserts the add-on still comes up healthy.
 
 ## 5.15.4.15.3
 

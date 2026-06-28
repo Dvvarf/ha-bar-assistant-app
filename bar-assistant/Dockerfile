@@ -241,17 +241,12 @@ chown -R www-data:www-data /data/meilisearch /data/bar-assistant 2>/dev/null || 
 # the incompatible DB -- by the time it starts, the old DB is already gone, so
 # `meili-ready`/HEALTHCHECK come up normally.
 #
-# FORCE_MEILI_REBUILD=1 short-circuits the version check to "always purge". This
-# is a TEMPORARY VALIDATION setting: it forces the wipe + reindex on EVERY boot,
-# exercising the upgrade path in the running add-on and confirming the container
-# reaches `healthy` regardless of whether the async reindex finishes (search just
-# fills in progressively afterwards). FLIP THIS TO 0 BEFORE A USER-FACING
-# RELEASE, or every restart will needlessly empty and rebuild the index.
-FORCE_MEILI_REBUILD=1
-
+# The CI smoke test exercises this purge path by seeding an older
+# /data/meilisearch/VERSION before boot and asserting the container still
+# reaches `healthy` (i.e. the incompatible-DB crash-loop was avoided) -- so the
+# upgrade path is validated on every build, not by forcing a rebuild here.
 MEILI_DIR="${MEILI_DB_PATH:-/data/meilisearch}"
 meili_needs_rebuild() {
-    [ "${FORCE_MEILI_REBUILD:-0}" = 1 ] && return 0
     # Fresh install (no DB yet): nothing to purge; Meilisearch creates it.
     [ -e "$MEILI_DIR/VERSION" ] || return 1
     eng="$(meilisearch --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
@@ -264,7 +259,7 @@ meili_needs_rebuild() {
     [ "${eng%.*}" != "${dbv%.*}" ]
 }
 if meili_needs_rebuild; then
-    echo "ba-prep: purging Meilisearch DB at $MEILI_DIR for rebuild (force=${FORCE_MEILI_REBUILD:-0})" >&2
+    echo "ba-prep: Meilisearch DB version mismatch; purging $MEILI_DIR for rebuild" >&2
     rm -rf "${MEILI_DIR:?}"
     mkdir -p "$MEILI_DIR"
     chown www-data:www-data "$MEILI_DIR" 2>/dev/null || true

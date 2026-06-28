@@ -198,10 +198,15 @@ layout (Meilisearch). All calls are best-effort (`|| true`) and fail-safe — a
 drifted contract leaves search empty but never wedges boot. The smoke test
 exercising a seeded-old-`VERSION` upgrade is the guard against silent drift.
 
-> ⚠️ **`FORCE_MEILI_REBUILD` in `ba-prep` is currently `1`** — it forces the purge
-> + reindex on **every** boot to validate the path. **Set it to `0` before a
-> user-facing release**, or every restart needlessly empties and rebuilds the
-> index. The real trigger (version mismatch) works with it at `0`.
+**Why the on-disk `VERSION` is a reliable trigger:** Meilisearch writes its own
+version into `$MEILI_DB_PATH/VERSION` when it creates/opens the DB, and that value
+**persists on the HA volume across restarts** until an engine actually rewrites it.
+On an upgrade boot, `prep` runs *before* the engine, so it reads the version the
+*previous* (older) engine recorded, sees the mismatch, and purges — only *then*
+does the new engine boot and write the new version. So there is no special "force"
+flag: the genuine version recorded by the prior engine is the signal. The CI smoke
+test validates this by seeding an older `VERSION` while the container is stopped
+and asserting it still comes up `healthy`.
 
 ---
 
