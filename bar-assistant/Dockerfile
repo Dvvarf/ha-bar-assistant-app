@@ -32,7 +32,7 @@
 # matching field in the version.
 ARG BUILD_FROM=barassistant/server:5.15
 
-FROM getmeili/meilisearch:v1.15 AS meili
+FROM getmeili/meilisearch:v1.48 AS meili
 FROM barassistant/salt-rim:4.15 AS saltrim
 
 FROM ${BUILD_FROM}
