@@ -37,3 +37,19 @@ jobs:
           # Heredocs + intentional root user are by design here (see CLAUDE.md);
           # keep lint advisory rather than failing the build on style rules.
           no-fail: true
+
+  renovate-config:
+    name: Renovate config validator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # Renovate's published JSON schema is permissive (e.g. it would not flag
+      # the `dockerfile.managers` typo that halted PRs in #12); only Renovate's
+      # own validator catches invalid config options. `--strict` also fails on
+      # warnings. Run from the repo root so renovate.json is checked as
+      # repository config.
+      - name: Validate renovate.json
+        run: npx --yes --package renovate -- renovate-config-validator --strict
