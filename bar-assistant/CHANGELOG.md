@@ -3,6 +3,26 @@
 All notable changes to this add-on are documented here. Versions follow the
 5-part `<BA_maj>.<BA_min>.<SR_maj>.<SR_min>.<pkg>` scheme described in `CLAUDE.md`.
 
+## 5.15.4.15.3
+
+- Fix php-fpm failing to start (`ALERT: [pool www] user has not been defined` ->
+  `FPM initialization failed`). The add-on runs the serversideup base as `root`
+  (to manage `/data` and the s6 environment), but php-fpm refuses to run workers
+  as root and then requires the pool to name a non-root `user`/`group`.
+  serversideup's pool config omits those directives because it is built to run
+  rootless, so forcing `root` made php-fpm abort at boot. The Dockerfile now
+  appends `user = www-data` / `group = www-data` to the serversideup pool config.
+
+- Apply the `LOG_LEVEL` option to Meilisearch as well. Meilisearch logs on its
+  own `MEILI_LOG_LEVEL` scale and previously ignored the add-on option, so it
+  always emitted `INFO`-level chatter (e.g. `actix_server: Actix runtime
+  found...`) even with the default `warning` level. The option is now mapped onto
+  Meilisearch's scale (`OFF`/`ERROR`/`WARN`/`INFO`/`DEBUG`/`TRACE`) and applied at
+  startup, so `warning` (the default) keeps Meilisearch quiet. Note: the one-time
+  `Routes cached`/`Events cached` lines at boot are artisan console output from
+  the base image's optimization step, not application logs, and are unaffected by
+  `LOG_LEVEL`.
+
 ## 5.15.4.15.2
 
 - Replace the `API_URL` and `MEILISEARCH_URL` options with a single `BASE_URL`.

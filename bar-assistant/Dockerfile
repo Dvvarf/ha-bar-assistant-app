@@ -41,6 +41,21 @@ FROM ${BUILD_FROM}
 # environment; individual services drop to www-data where appropriate.
 USER root
 
+# php-fpm refuses to run its workers as root: when the master runs as root it
+# REQUIRES each pool to name a non-root `user`/`group`. serversideup's image is
+# built to run rootless (master == www-data), so its pool config
+# (docker-php-serversideup-pool.conf, the `[www]` pool) omits those directives --
+# unnecessary while unprivileged. Forcing `USER root` (above) makes the master
+# root, so the missing directives now fail hard at boot:
+#   ALERT: [pool www] user has not been defined
+#   ERROR: failed to post process the configuration
+#   ERROR: FPM initialization failed
+# Pin the workers to www-data (the upstream-intended runtime user) so php-fpm
+# initializes. Leading newline guards against the file lacking a trailing one.
+# See serversideup/docker-php discussion #533.
+RUN printf '\nuser = www-data\ngroup = www-data\n' \
+        >> /usr/local/etc/php-fpm.d/docker-php-serversideup-pool.conf
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl gettext-base jq \
     && apt-get clean \
@@ -269,11 +284,27 @@ API="${BASE}/bar"
 SEARCH_URL="${BASE}/search"
 REG="$(resolve ALLOW_REGISTRATION true)"
 
+# Meilisearch logs at its OWN MEILI_LOG_LEVEL (scale OFF/ERROR/WARN/INFO/DEBUG/
+# TRACE, built-in default INFO) -- it does NOT read Laravel's LOG_LEVEL, so
+# without this it always emits INFO noise (e.g. "actix_server: Actix runtime
+# found...") no matter what the add-on option says. Map the add-on's Monolog-style
+# LOG_LEVEL onto Meilisearch's coarser scale; default to the add-on's documented
+# `warning` (-> WARN) so Meilisearch is quiet by default, matching the API.
+LL="$(opt LOG_LEVEL)"
+case "${LL:-warning}" in
+    debug)                          MEILI_LL=DEBUG ;;
+    info|notice)                    MEILI_LL=INFO ;;
+    warning)                        MEILI_LL=WARN ;;
+    error|critical|alert|emergency) MEILI_LL=ERROR ;;
+    *)                              MEILI_LL=WARN ;;
+esac
+
 # (1) Sourceable env for our own services (meilisearch, salt-rim). MEILISEARCH_KEY
 # must equal Meilisearch's master key for the API<->search handshake to work.
 cat > /run/bar-assistant.env <<EOF
 export MEILI_MASTER_KEY='${MASTER_KEY}'
 export MEILISEARCH_KEY='${MASTER_KEY}'
+export MEILI_LOG_LEVEL='${MEILI_LL}'
 export API_URL='${API}'
 export APP_URL='${API}'
 export MEILISEARCH_URL='${SEARCH_URL}'
@@ -408,8 +439,10 @@ RUN set -eux; \
 
 RUN cat > /etc/s6-overlay/s6-rc.d/meilisearch/run <<'RUNMEILI'
 #!/command/with-contenv sh
-# Pick up the user's resolved MEILI_MASTER_KEY (with-contenv can't, due to
-# S6_KEEP_ENV=1); prep wrote this before meilisearch starts (dependency).
+# Pick up the user's resolved MEILI_MASTER_KEY and MEILI_LOG_LEVEL (with-contenv
+# can't, due to S6_KEEP_ENV=1); prep wrote this before meilisearch starts
+# (dependency). MEILI_LOG_LEVEL maps the add-on LOG_LEVEL onto Meilisearch's own
+# scale so it isn't stuck at its INFO default.
 [ -r /run/bar-assistant.env ] && . /run/bar-assistant.env
 # Meilisearch writes into its current working directory at startup, and s6
 # launches services from "/" (not writable by www-data) -> "Permission denied
@@ -435,7 +468,7 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/meilisearch/run \
              /etc/s6-overlay/s6-rc.d/salt-rim/run
 
 LABEL \
-  io.hass.version="5.15.4.15.2" \
+  io.hass.version="5.15.4.15.3" \
   io.hass.type="app" \
   io.hass.arch="aarch64|amd64" \
   io.hass.name="Bar Assistant stack" \
