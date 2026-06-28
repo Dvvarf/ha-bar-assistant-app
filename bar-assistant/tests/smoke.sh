@@ -110,18 +110,23 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Upgrade-path test: simulate an add-on built against a NEWER Meilisearch engine
-# being started on a /data created by an OLDER one. We stamp an old version into
-# the on-disk Meilisearch VERSION file (read by ba-prep's guard BEFORE the engine
-# starts) and restart. ba-prep must purge the stale DB so the engine boots clean;
-# if the purge fails, Meilisearch refuses to boot on the incompatible DB and the
+# Upgrade-path test: simulate the bundled Meilisearch engine being started on a
+# /data created by a DIFFERENT version. We stamp a version into the on-disk
+# Meilisearch VERSION file (read by ba-prep's guard BEFORE the engine starts) and
+# restart. ba-prep must purge the stale DB so the engine boots clean; if the
+# purge fails, Meilisearch refuses to boot on the incompatible DB and the
 # container never reaches healthy -- so this phase fails. (We don't assert the
-# index repopulated, only that the upgrade boots healthy and the stale DB was
-# purged.)
+# index repopulated, only that it boots healthy and the stale DB was purged.)
+#
+# We stamp 1.0.0 deliberately: it sits well below any realistic bundled engine,
+# so the major.minor mismatch (and thus the purge) holds no matter which
+# Meilisearch the image ships -- this also covers an image ROLLBACK to an older
+# engine, where the on-disk DB is NEWER than the engine. A nearer value like
+# 1.15.0 would falsely MATCH if the image were ever bundled with 1.15.
 # ---------------------------------------------------------------------------
-echo "==> Upgrade-path test: seed an older Meilisearch DB version and restart"
+echo "==> Upgrade-path test: seed an old Meilisearch DB version and restart"
 docker stop "$CONTAINER" >/dev/null
-docker run --rm -v "$VOLUME":/data alpine:3.20 sh -c 'printf "1.15.0\n" > /data/meilisearch/VERSION'
+docker run --rm -v "$VOLUME":/data alpine:3.20 sh -c 'printf "1.0.0\n" > /data/meilisearch/VERSION'
 docker start "$CONTAINER" >/dev/null
 
 echo "==> Waiting for the stack to come back up after the simulated upgrade (up to 180s)"
@@ -137,12 +142,12 @@ fi
 
 check "Meilisearch health after upgrade" "200" "${BASE}/search/health"
 
-echo "==> Confirming the stale Meilisearch DB was purged (VERSION no longer 1.15.x)"
+echo "==> Confirming the stale Meilisearch DB was purged (VERSION no longer 1.0.x)"
 upv="$(docker run --rm -v "$VOLUME":/data alpine:3.20 sh -c 'cat /data/meilisearch/VERSION 2>/dev/null' || true)"
 case "$upv" in
-    1.15.*) echo "  FAIL stale VERSION ($upv) still present -- purge did not run"; fail=1 ;;
-    "")     echo "  FAIL no VERSION file after upgrade boot"; fail=1 ;;
-    *)      echo "  ok   stale DB purged; Meilisearch recreated VERSION ($upv)" ;;
+    1.0.*) echo "  FAIL stale VERSION ($upv) still present -- purge did not run"; fail=1 ;;
+    "")    echo "  FAIL no VERSION file after upgrade boot"; fail=1 ;;
+    *)     echo "  ok   stale DB purged; Meilisearch recreated VERSION ($upv)" ;;
 esac
 
 echo "==> Confirming the container is healthy again after the upgrade (up to 60s)"
