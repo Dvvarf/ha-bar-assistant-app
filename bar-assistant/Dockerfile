@@ -24,7 +24,7 @@
 # and resolve blank in `FROM ${BUILD_FROM}`.
 #
 # Upstreams are pinned to their MINOR tag (server:5.15, salt-rim:4.15,
-# meilisearch:v1.15), not the floating major (:v5 / :v4). This still tracks
+# meilisearch:v1.48), not the floating major (:v5 / :v4). This still tracks
 # patch releases automatically, but fixes the major.minor at build time so the
 # add-on version can honestly mirror it -- the add-on version is
 # <BA_major>.<BA_minor>.<SR_major>.<SR_minor>.<pkg> (see "Versioning" in CLAUDE.md).
@@ -32,7 +32,7 @@
 # matching field in the version.
 ARG BUILD_FROM=barassistant/server:5.15
 
-FROM getmeili/meilisearch:v1.15 AS meili
+FROM getmeili/meilisearch:v1.48 AS meili
 FROM barassistant/salt-rim:4.15 AS saltrim
 
 FROM ${BUILD_FROM}
@@ -225,6 +225,53 @@ mkdir -p /data/meilisearch \
          /data/bar-assistant/temp
 chown -R www-data:www-data /data/meilisearch /data/bar-assistant 2>/dev/null || true
 
+# ---------------------------------------------------------------------------
+# Meilisearch DB version guard (upgrade safety).
+#
+# Meilisearch ties its on-disk DB to the engine version that created it: a newer
+# engine opening an older DB refuses to boot ("database version X is incompatible
+# with engine version Y") and EXITS, which would crash-loop the meilisearch
+# longrun and wedge the add-on after a version bump. We avoid that by treating
+# Meilisearch purely as a REBUILDABLE secondary index -- the Bar Assistant SQLite
+# DB is the source of truth -- and PURGING the Meili data dir here in `prep`,
+# which runs BEFORE the meilisearch longrun starts (dependencies.d/prep). An
+# empty dir is always version-compatible, so the engine boots clean; the
+# `meili-reindex` oneshot (ordered after 99-bass) then repopulates documents
+# from SQLite. Doing the purge in prep is what guarantees the engine never sees
+# the incompatible DB -- by the time it starts, the old DB is already gone, so
+# `meili-ready`/HEALTHCHECK come up normally.
+#
+# FORCE_MEILI_REBUILD=1 short-circuits the version check to "always purge". This
+# is a TEMPORARY VALIDATION setting: it forces the wipe + reindex on EVERY boot,
+# exercising the upgrade path in the running add-on and confirming the container
+# reaches `healthy` regardless of whether the async reindex finishes (search just
+# fills in progressively afterwards). FLIP THIS TO 0 BEFORE A USER-FACING
+# RELEASE, or every restart will needlessly empty and rebuild the index.
+FORCE_MEILI_REBUILD=1
+
+MEILI_DIR="${MEILI_DB_PATH:-/data/meilisearch}"
+meili_needs_rebuild() {
+    [ "${FORCE_MEILI_REBUILD:-0}" = 1 ] && return 0
+    # Fresh install (no DB yet): nothing to purge; Meilisearch creates it.
+    [ -e "$MEILI_DIR/VERSION" ] || return 1
+    eng="$(meilisearch --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+    dbv="$(tr -dc '0-9.' < "$MEILI_DIR/VERSION" 2>/dev/null)"
+    # If either side is unknown, don't risk a needless purge -- let Meilisearch
+    # decide (it will refuse to boot on a true mismatch, which the smoke test
+    # would catch on the next build).
+    [ -n "$eng" ] && [ -n "$dbv" ] || return 1
+    # Patch never breaks the on-disk format; compare major.minor only.
+    [ "${eng%.*}" != "${dbv%.*}" ]
+}
+if meili_needs_rebuild; then
+    echo "ba-prep: purging Meilisearch DB at $MEILI_DIR for rebuild (force=${FORCE_MEILI_REBUILD:-0})" >&2
+    rm -rf "${MEILI_DIR:?}"
+    mkdir -p "$MEILI_DIR"
+    chown www-data:www-data "$MEILI_DIR" 2>/dev/null || true
+    # Marker (tmpfs, fresh each boot) tells the meili-reindex oneshot to run.
+    : > /run/bar-assistant.meili-rebuild
+fi
+
 # The storage path is an inherited Docker VOLUME (can't be replaced wholesale),
 # so symlink the data-bearing subdirs into /data instead. The DB itself is
 # relocated via DB_DATABASE. Symlinks are recreated every boot (idempotent).
@@ -397,6 +444,44 @@ exit 0
 WAIT
 RUN chmod +x /usr/local/bin/meili-wait.sh
 
+# Repopulate Meilisearch from the SQLite source of truth AFTER a prep-triggered
+# DB purge (see the version guard in ba-prep). Launched detached by the
+# `meili-reindex` oneshot so a long-running or failing reindex never gates s6
+# bring-up or the container HEALTHCHECK -- the web services + Meilisearch /health
+# are already up, so the add-on reports `healthy` immediately and search results
+# fill in progressively. Gated on the prep marker, so a normal boot (no purge)
+# is a no-op. QUEUE_CONNECTION=sync in this image, so Bar Assistant's queued
+# RefreshSearchIndex job runs inline to completion (no worker needed).
+RUN cat > /usr/local/bin/meili-reindex.sh <<'REINDEX'
+#!/usr/bin/env bash
+[ -e /run/bar-assistant.meili-rebuild ] || exit 0
+
+# Run the actual rebuild DETACHED, then return immediately, so this oneshot's
+# `up` completes at once and the reindex never gates s6 bring-up or the container
+# HEALTHCHECK. (Keeping the s6 `up` line in the same simple form as the other
+# services avoids relying on execline quoting to background it.)
+reindex() {
+    [ -r /run/bar-assistant.env ] && . /run/bar-assistant.env
+    # Wait for the (freshly purged) engine to actually serve before importing.
+    addr="${MEILI_HTTP_ADDR:-127.0.0.1:7700}"
+    for _ in $(seq 1 120); do
+        curl -fsS "http://${addr}/health" >/dev/null 2>&1 && break
+        sleep 1
+    done
+    cd /var/www/cocktails || return 0
+    # A wipe discards Meilisearch's scoped API keys; regenerate them (-f) so each
+    # bar's stored search token matches the new keys, then flush + reimport all
+    # searchable models. Best-effort: failure leaves search empty but must not
+    # affect container health. QUEUE_CONNECTION=sync runs the queued job inline.
+    s6-setuidgid www-data php artisan bar:setup-meilisearch -f >/dev/null 2>&1 || true
+    s6-setuidgid www-data php artisan bar:refresh-search --clear >/dev/null 2>&1 || true
+    rm -f /run/bar-assistant.meili-rebuild
+}
+reindex </dev/null >/dev/null 2>&1 &
+exit 0
+REINDEX
+RUN chmod +x /usr/local/bin/meili-reindex.sh
+
 # ---------------------------------------------------------------------------
 # s6-overlay services (the base image's /init supervises these alongside
 # Bar Assistant's own php-fpm + nginx):
@@ -426,6 +511,13 @@ RUN set -eux; \
     mkdir -p "$base/salt-rim/dependencies.d"; \
     printf 'longrun' > "$base/salt-rim/type"; \
     touch "$base/salt-rim/dependencies.d/prep"; \
+    # meili-reindex (oneshot) -> repopulate Meilisearch after a prep-triggered
+    # purge. Ordered AFTER 99-bass so indexes/settings/keys already exist; the up
+    # script backgrounds the actual reindex so it never gates bring-up or health.
+    mkdir -p "$base/meili-reindex/dependencies.d"; \
+    printf 'oneshot' > "$base/meili-reindex/type"; \
+    printf '%s\n' '/command/with-contenv bash /usr/local/bin/meili-reindex.sh' > "$base/meili-reindex/up"; \
+    touch "$base/meili-reindex/dependencies.d/99-bass"; \
     # make the base's 99-bass init wait for Meilisearch readiness
     printf '%s\n' 'meili-ready' >> "$base/99-bass/dependencies"; \
     # ensure prep (which writes .env) runs before the base bakes config:cache
@@ -435,6 +527,7 @@ RUN set -eux; \
     touch "$base/user/contents.d/prep" \
           "$base/user/contents.d/meilisearch" \
           "$base/user/contents.d/meili-ready" \
+          "$base/user/contents.d/meili-reindex" \
           "$base/user/contents.d/salt-rim"
 
 RUN cat > /etc/s6-overlay/s6-rc.d/meilisearch/run <<'RUNMEILI'
@@ -468,7 +561,7 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/meilisearch/run \
              /etc/s6-overlay/s6-rc.d/salt-rim/run
 
 LABEL \
-  io.hass.version="5.15.4.15.3" \
+  io.hass.version="5.15.4.15.4" \
   io.hass.type="app" \
   io.hass.arch="aarch64|amd64" \
   io.hass.name="Bar Assistant stack" \

@@ -3,6 +3,24 @@
 All notable changes to this add-on are documented here. Versions follow the
 5-part `<BA_maj>.<BA_min>.<SR_maj>.<SR_min>.<pkg>` scheme described in `CLAUDE.md`.
 
+## 5.15.4.15.4
+
+- Update bundled Meilisearch from v1.15 to v1.48, and make Meilisearch version
+  jumps safe. Meilisearch refuses to boot when a newer engine opens a database
+  created by an older one, which would crash-loop the add-on after a version
+  bump. Since Bar Assistant's SQLite database is the source of truth and the
+  search index is a rebuildable secondary store, `ba-prep` now purges the
+  Meilisearch data dir in the `prep` oneshot (before the engine starts) when the
+  on-disk version doesn't match the engine, so it boots clean; a new
+  `meili-reindex` oneshot then repopulates the index from the database in the
+  background (`bar:setup-meilisearch -f` + `bar:refresh-search --clear`). The
+  reindex is detached so it never delays the container reaching `healthy` —
+  search results fill in progressively after boot.
+- **Note (temporary):** this build forces the purge + reindex on **every** boot
+  (`FORCE_MEILI_REBUILD=1` in `ba-prep`) to validate the upgrade path end to end.
+  This must be set back to `0` before a user-facing release so normal restarts
+  don't needlessly rebuild the index.
+
 ## 5.15.4.15.3
 
 - Fix php-fpm failing to start (`ALERT: [pool www] user has not been defined` ->

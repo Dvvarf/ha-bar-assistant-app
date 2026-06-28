@@ -1,5 +1,5 @@
 name: "Bar Assistant"
-version: "5.15.4.15.3"
+version: "5.15.4.15.4"
 description: "Meilisearch + Bar Assistant API + Salt Rim in a single add-on"
 url: "https://github.com/karlomikus/bar-assistant"
 slug: "bar-assistant"
