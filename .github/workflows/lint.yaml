@@ -43,9 +43,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "latest"
       # Renovate's published JSON schema is permissive (e.g. it would not flag
       # the `dockerfile.managers` typo that halted PRs in #12); only Renovate's
       # own validator catches invalid config options. `--strict` also fails on
