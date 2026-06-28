@@ -37,3 +37,25 @@ jobs:
           # Heredocs + intentional root user are by design here (see CLAUDE.md);
           # keep lint advisory rather than failing the build on style rules.
           no-fail: true
+
+  renovate-config:
+    name: Renovate config validator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          # Match Renovate's own engines.node (currently ^24.11.0). Do NOT use
+          # "latest": a Node newer than Renovate supports makes `npx renovate`
+          # walk back to an ancient release (v37 on Node 26), which predates
+          # current config fields like `managerFilePatterns` and then reports
+          # false errors. Node 24 resolves the current Renovate -- the same one
+          # the hosted bot validates with.
+          node-version: "24"
+      # Renovate's published JSON schema is permissive (e.g. it would not flag
+      # the `dockerfile.managers` typo that halted PRs in #12); only Renovate's
+      # own validator catches invalid config options. `--strict` also fails on
+      # warnings. Run from the repo root so renovate.json is checked as
+      # repository config.
+      - name: Validate renovate.json
+        run: npx --yes --package renovate -- renovate-config-validator --strict
