@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           # Match Renovate's own engines.node (currently ^24.11.0). Do NOT use
           # "latest": a Node newer than Renovate supports makes `npx renovate`
