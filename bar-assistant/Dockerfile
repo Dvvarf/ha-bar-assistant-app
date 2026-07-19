@@ -24,7 +24,7 @@
 # and resolve blank in `FROM ${BUILD_FROM}`.
 #
 # Upstreams are pinned to their MINOR tag (server:5.15, salt-rim:4.15,
-# meilisearch:v1.48), not the floating major (:v5 / :v4). This still tracks
+# meilisearch:v1.49), not the floating major (:v5 / :v4). This still tracks
 # patch releases automatically, but fixes the major.minor at build time so the
 # add-on version can honestly mirror it -- the add-on version is
 # <BA_major>.<BA_minor>.<SR_major>.<SR_minor>.<pkg> (see "Versioning" in CLAUDE.md).
@@ -32,7 +32,7 @@
 # matching field in the version.
 ARG BUILD_FROM=barassistant/server:5.15
 
-FROM getmeili/meilisearch:v1.48 AS meili
+FROM getmeili/meilisearch:v1.49 AS meili
 FROM barassistant/salt-rim:4.15 AS saltrim
 
 FROM ${BUILD_FROM}
@@ -556,7 +556,7 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/meilisearch/run \
              /etc/s6-overlay/s6-rc.d/salt-rim/run
 
 LABEL \
-  io.hass.version="5.15.4.15.3" \
+  io.hass.version="5.15.4.15.4" \
   io.hass.type="app" \
   io.hass.arch="aarch64|amd64" \
   io.hass.name="Bar Assistant stack" \

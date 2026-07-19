@@ -14,7 +14,7 @@
       "labels": ["dependencies", "github-actions"]
     },
     {
-      "description": "Upstream images are deliberately pinned to MINOR tags (server:5.15, salt-rim:4.15, meilisearch:v1.15) that float on PATCH automatically (see bar-assistant/CLAUDE.md 'Versioning'). Surface minor/major moves as PRs for the maintainer to review -- because each also requires a coupled bump of the 5-part add-on version + Dockerfile LABEL, which no bot can do unattended.",
+      "description": "Upstream images are deliberately pinned to MINOR tags (server:5.15, salt-rim:4.15, meilisearch:v1.49) that float on PATCH automatically (see bar-assistant/CLAUDE.md 'Versioning'). Surface minor/major moves as PRs for the maintainer to review -- because each also requires a coupled bump of the 5-part add-on version + Dockerfile LABEL, which no bot can do unattended.",
       "matchManagers": ["dockerfile", "custom.regex"],
       "matchPackageNames": [
         "barassistant/server",

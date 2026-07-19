@@ -90,7 +90,7 @@ section left-to-right, so ordering stays monotonic
 strict 3-part semver — that's fine; AwesomeVersion handles arbitrary dotted lengths.
 
 **Why the upstreams are pinned to MINOR tags** (`server:5.15`, `salt-rim:4.15`,
-`meilisearch:v1.48`) rather than floating majors: the embedded `major.minor` fields
+`meilisearch:v1.49`) rather than floating majors: the embedded `major.minor` fields
 can only honestly mirror the upstreams if they're fixed at build time. Minor tags
 still float on *patch*, so security/patch updates still flow in automatically — they
 just land as a `<pkg>` bump here.
@@ -400,7 +400,7 @@ image or the musl-lib copy starts breaking across Meilisearch upgrades.
    test's API health check is the guard.
 2. **Meilisearch on aarch64.** VERIFIED on `meilisearch 1.15.2`: the copied binary
    execs and serves on aarch64 and amd64 with its musl deps (fix #2 above).
-   **Re-verify after the v1.48 bump** — the musl-lib copy paths (`/bin/meilisearch`,
+   **Re-verify after the v1.49 bump** — the musl-lib copy paths (`/bin/meilisearch`,
    `/lib/ld-musl-*.so.1`, `/usr/lib/libgcc_s.so.1`) are unverified across that span;
    a real build + smoke on both arches is the check.
 3. **First-boot options timing.** Bar Assistant's one-time setup may run before
