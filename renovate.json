@@ -6,6 +6,7 @@
   ],
   "timezone": "UTC",
   "labels": ["dependencies"],
+  "schedule": ["before 6am on monday"],
   "packageRules": [
     {
       "description": "Group GitHub Actions bumps together.",
@@ -14,31 +15,25 @@
       "labels": ["dependencies", "github-actions"]
     },
     {
-      "description": "Upstream images (matched below) are deliberately pinned to MINOR tags in the Dockerfile that float on PATCH automatically (see bar-assistant/CLAUDE.md 'Versioning'). Surface minor/major moves as PRs for the maintainer to review -- because each also requires a coupled bump of the 5-part add-on version + Dockerfile LABEL, which no bot can do unattended.",
+      "description": "Upstream images are pinned to full PATCH tags in the Dockerfile (see bar-assistant/CLAUDE.md 'Versioning'), so every upstream release -- major, minor, and patch -- surfaces as a PR. Each still requires a coupled bump of the 5-part add-on version + Dockerfile LABEL, which no bot can do unattended, so they are flagged for the maintainer.",
       "matchManagers": ["dockerfile", "custom.regex"],
       "matchPackageNames": [
         "barassistant/server",
         "barassistant/salt-rim",
         "getmeili/meilisearch"
       ],
-      "matchUpdateTypes": ["major", "minor"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
       "groupName": "bar-assistant upstreams",
       "labels": ["dependencies", "upstream", "needs-version-bump"],
       "addLabels": ["needs-version-bump"],
       "prBodyNotes": [
-        ":warning: This bumps an upstream MINOR/MAJOR tag. Before merging, update the coupled fields per bar-assistant/CLAUDE.md 'Versioning': `config.yaml` `version:`, the Dockerfile `io.hass.version` LABEL, and confirm `scripts/check-version-sync.sh` passes."
+        ":warning: This bumps an upstream tag. Before merging, update the coupled fields per bar-assistant/CLAUDE.md 'Versioning': `config.yaml` `version:` (a major/minor move updates the matching field, a patch move bumps `<pkg>`), the Dockerfile `io.hass.version` LABEL, and confirm `scripts/check-version-sync.sh` passes."
       ]
     },
     {
-      "description": "Patch float happens via the minor tag at build time; do not open patch PRs for the pinned upstream tags.",
-      "matchManagers": ["dockerfile", "custom.regex"],
-      "matchPackageNames": [
-        "barassistant/server",
-        "barassistant/salt-rim",
-        "getmeili/meilisearch"
-      ],
-      "matchUpdateTypes": ["patch"],
-      "enabled": false
+      "description": "Collect every update into ONE grouped PR per weekly run (see top-level `schedule`). Kept LAST so its groupName wins for all deps (Renovate applies matching rules in order, last write wins), funneling GitHub Actions, the upstream images, and everything else config:recommended tracks into a single branch/PR. The per-dep labels and the upstream version-bump warning above still apply -- addLabels/prBodyNotes append across matching rules -- so a coupled upstream MINOR/MAJOR move stays flagged (`needs-version-bump`) even inside the combined PR.",
+      "matchPackageNames": ["*"],
+      "groupName": "weekly dependencies"
     }
   ],
   "customManagers": [
@@ -47,7 +42,7 @@
       "customType": "regex",
       "managerFilePatterns": ["/bar-assistant/Dockerfile/"],
       "matchStrings": [
-        "ARG BUILD_FROM=(?<depName>barassistant/server):(?<currentValue>[0-9]+\\.[0-9]+)"
+        "ARG BUILD_FROM=(?<depName>barassistant/server):(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)"
       ],
       "datasourceTemplate": "docker"
     },

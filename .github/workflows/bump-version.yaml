@@ -1,0 +1,137 @@
+name: Bump packaging revision
+
+# After a PR merges into main, auto-increment the <pkg> field (5th part) of the
+# add-on version -- in BOTH config.yaml `version:` and the Dockerfile
+# io.hass.version LABEL, and prepend a matching CHANGELOG.md entry -- but ONLY
+# when the merge changed the built image and
+# did NOT move an upstream major/minor. Upstream major/minor moves set the
+# leading version fields by hand in the PR (the needs-version-bump Renovate label
+# prompts this, and scripts/check-version-sync.sh enforces the coupling), so this
+# job must not bump on top of them. No tag or release is created here --
+# publish.yaml still fires only on a pushed version tag.
+#
+# Why trigger on pull_request:closed rather than push: this job's own bump is a
+# direct push to main, and a push from the default GITHUB_TOKEN triggers no
+# further workflows -- so it can never re-trigger this workflow. No loop.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+# Serialize bumps so two PRs merging back-to-back can't race on the counter.
+concurrency:
+  group: version-bump
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Bump <pkg> on image-affecting merges
+    # Only merged PRs (a closed-but-not-merged PR fires the same event).
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          # Need the merge commit's first parent (previous main tip) to compare
+          # versions and diff the changed files, so fetch full history.
+          fetch-depth: 0
+
+      - name: Decide whether to bump, and do it
+        env:
+          SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          # Passed as env (not inlined as ${{ }}) so an untrusted PR title can't
+          # be interpreted as shell.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          # Previous main state = first parent of the merge/squash commit. Works
+          # for merge commits (^1 == main's prior tip), squash and rebase merges
+          # (parent == prior tip) alike.
+          prev="$(git rev-parse "${SHA}^" 2>/dev/null || true)"
+          if [ -z "$prev" ]; then
+            echo "Could not resolve the merge commit's parent; skipping."; exit 0
+          fi
+
+          ver_at() {  # ver_at <ref> -> the version string in config.yaml at <ref>
+            git show "$1:bar-assistant/config.yaml" 2>/dev/null \
+              | grep -E '^version:' | head -1 \
+              | sed -E 's/^version:[[:space:]]*"?([^"]+)"?[[:space:]]*$/\1/'
+          }
+          prev_ver="$(ver_at "$prev")"
+          curr_ver="$(ver_at "$SHA")"
+          echo "prev main version: ${prev_ver:-<none>}"
+          echo "curr main version: ${curr_ver:-<none>}"
+
+          # If the leading four fields (BA/SR major.minor) changed, the PR already
+          # moved an upstream major/minor and set the version by hand (pkg reset
+          # to 0) -- do NOT bump on top of that.
+          if [ -n "$prev_ver" ] && [ "${prev_ver%.*}" != "${curr_ver%.*}" ]; then
+            echo "Upstream major/minor moved (${prev_ver%.*} -> ${curr_ver%.*}); version handled in the PR. Skipping."
+            exit 0
+          fi
+
+          # Only bump when a file that defines the built image or the add-on
+          # manifest changed. Docs, tests, workflows and renovate.json don't
+          # change what ships, so they never bump <pkg>.
+          changed="$(git diff --name-only "$prev" "$SHA")"
+          echo "changed files:"; printf '%s\n' "$changed" | sed 's/^/  /'
+          if ! printf '%s\n' "$changed" \
+               | grep -qE '^bar-assistant/(Dockerfile|config\.yaml|apparmor\.txt|translations/)'; then
+            echo "No image-affecting change; nothing to bump. Skipping."
+            exit 0
+          fi
+
+          # Build the changelog body: one bullet per upstream image whose pinned
+          # tag moved in this merge; a generic line if an image/manifest file
+          # changed without an upstream tag move.
+          tag_at() {  # tag_at <ref> <grep-regex> -> the tag after the last ':'
+            git show "$1:bar-assistant/Dockerfile" 2>/dev/null \
+              | grep -oE "$2" | head -1 | sed -E 's|.*:||'
+          }
+          body=""
+          add_line() {
+            if [ -n "$body" ]; then body="${body}"$'\n'"- $1"; else body="- $1"; fi
+          }
+          # name|grep-regex for each pinned upstream image. A for-loop over an
+          # array (not a piped while) keeps $body in the current shell.
+          images=(
+            "Bar Assistant server|barassistant/server:[0-9]+\.[0-9]+\.[0-9]+"
+            "Salt Rim|barassistant/salt-rim:[0-9]+\.[0-9]+\.[0-9]+"
+            "Meilisearch|getmeili/meilisearch:v[0-9]+\.[0-9]+\.[0-9]+"
+          )
+          for entry in "${images[@]}"; do
+            name="${entry%%|*}"; re="${entry#*|}"
+            old="$(tag_at "$prev" "$re")"; new="$(tag_at "$SHA" "$re")"
+            if [ -n "$old" ] && [ -n "$new" ] && [ "$old" != "$new" ]; then
+              add_line "Update bundled ${name} from ${old} to ${new}."
+            fi
+          done
+          [ -n "$body" ] || add_line "Packaging update (PR #${PR_NUMBER}: ${PR_TITLE})."
+
+          new_ver="$(bash scripts/bump-pkg.sh)"
+          printf '%s\n' "$body" | bash scripts/changelog-prepend.sh "$new_ver"
+          echo "Bumped to ${new_ver} with changelog entry:"; printf '%s\n' "$body"
+
+          if git diff --quiet; then
+            echo "No net change after bump; skipping commit."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bar-assistant/config.yaml bar-assistant/Dockerfile bar-assistant/CHANGELOG.md
+          git commit \
+            -m "Bump packaging revision to ${new_ver} [skip ci]" \
+            -m "Auto-bump of <pkg> after merging PR #${PR_NUMBER} (${PR_TITLE}), which changed the built image without an upstream major/minor move."
+
+          # concurrency serializes bumps, but rebase onto the latest tip anyway
+          # in case main advanced between checkout and push.
+          git pull --rebase origin main
+          git push origin HEAD:main
