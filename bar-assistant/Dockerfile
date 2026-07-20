@@ -23,17 +23,19 @@
 # when building standalone). Declared after a FROM it would be stage-scoped
 # and resolve blank in `FROM ${BUILD_FROM}`.
 #
-# Upstreams are pinned to their MINOR tag (the concrete tags live on the
-# ARG/FROM lines just below), not the floating major. This still tracks
-# patch releases automatically, but fixes the major.minor at build time so the
-# add-on version can honestly mirror it -- the add-on version is
-# <BA_major>.<BA_minor>.<SR_major>.<SR_minor>.<pkg> (see "Versioning" in CLAUDE.md).
-# When either upstream's major/minor moves, bump the matching tag here AND the
-# matching field in the version.
-ARG BUILD_FROM=barassistant/server:5.15
+# Upstreams are pinned to their full PATCH tag (the concrete tags live on the
+# ARG/FROM lines just below), not a floating minor. Pinning the patch makes
+# every upstream release -- patch included -- an explicit Renovate PR instead of
+# something that silently floats in on the next rebuild, while still fixing the
+# major.minor at build time so the add-on version can honestly mirror it -- the
+# add-on version is <BA_major>.<BA_minor>.<SR_major>.<SR_minor>.<pkg> (see
+# "Versioning" in CLAUDE.md). When an upstream moves, bump the matching tag here
+# AND the version: a major/minor move updates the matching field, a patch move
+# bumps <pkg>.
+ARG BUILD_FROM=barassistant/server:5.15.3
 
-FROM getmeili/meilisearch:v1.50 AS meili
-FROM barassistant/salt-rim:4.15 AS saltrim
+FROM getmeili/meilisearch:v1.50.0 AS meili
+FROM barassistant/salt-rim:4.15.0 AS saltrim
 
 FROM ${BUILD_FROM}
 

@@ -48,7 +48,7 @@ build+smoke, `publish.yaml` → GHCR on a release tag).
 - `run.sh` — not used; s6 supervises all three services directly.
 - `build.yaml` — obsolete since Supervisor 2026.04.0 (the legacy builder no longer
   reads it). The base image is pinned via the `ARG BUILD_FROM` default in the
-  Dockerfile instead (`barassistant/server` at its minor tag — see "Versioning" below).
+  Dockerfile instead (`barassistant/server` at its pinned patch tag — see "Versioning" below).
 
 `translations/en.yaml` — localizes the option **names/descriptions** (and the
 published port) shown in the add-on Configuration tab. Keys mirror `config.yaml`
@@ -89,12 +89,13 @@ section left-to-right, so ordering stays monotonic
 (`5.15.4.15.0` < `5.15.4.15.1` < `5.15.4.16.0` < `5.16.0.0.0.0`). This is **not**
 strict 3-part semver — that's fine; AwesomeVersion handles arbitrary dotted lengths.
 
-**Why the upstreams are pinned to MINOR tags** (`server`, `salt-rim`,
-`meilisearch` — the concrete tags live in the Dockerfile) rather than floating
-majors: the embedded `major.minor` fields
-can only honestly mirror the upstreams if they're fixed at build time. Minor tags
-still float on *patch*, so security/patch updates still flow in automatically — they
-just land as a `<pkg>` bump here.
+**Why the upstreams are pinned to full PATCH tags** (`server`, `salt-rim`,
+`meilisearch` — the concrete tags live in the Dockerfile) rather than a floating
+minor: the embedded `major.minor` fields can only honestly mirror the upstreams
+if they're fixed at build time. Pinning the patch too means every upstream
+release — patch included — surfaces as an explicit Renovate PR (grouped weekly)
+instead of silently floating in on the next rebuild, so each upstream move is a
+reviewed, tagged release here. A patch move lands as a `<pkg>` bump.
 
 **Bump rules** (always update `config.yaml` + the LABEL together; repoint the
 matching FROM/`BUILD_FROM` tag in the Dockerfile):
@@ -105,7 +106,7 @@ matching FROM/`BUILD_FROM` tag in the Dockerfile):
 | BA backend **minor** (`server:5.16`) | `5.16.<SR_maj>.<SR_min>.0` |
 | Salt Rim **major** (`salt-rim:5.x`) | `5.15.5.0.0` |
 | Salt Rim **minor** (`salt-rim:4.16`) | `5.15.4.16.0` |
-| Upstream **patch** (server `5.15.2→3`, salt-rim, meilisearch) | bump `<pkg>`: `…​.1` (tags float on patch, so often just a rebuild). |
+| Upstream **patch** (server `5.15.2→3`, salt-rim, meilisearch) | repoint the pinned patch tag in the Dockerfile and bump `<pkg>`: `…​.1` (arrives as a Renovate PR). |
 | This image only (Dockerfile / s6 / config.yaml) | bump `<pkg>`: `…​.1` |
 
 The `<pkg>` field is where non-major/minor changes accumulate: e.g. `.0` was the
@@ -117,7 +118,7 @@ first packaged release and `.1` added the optional AI/Redis/general add-on optio
 
 ## How it runs (architecture)
 
-- **Base image:** `barassistant/server` at its pinned minor tag (Debian/glibc + serversideup PHP-FPM +
+- **Base image:** `barassistant/server` at its pinned patch tag (Debian/glibc + serversideup PHP-FPM +
   nginx + s6-overlay v3). **Do not** try to rebase on the Alpine HA base
   (`ghcr.io/home-assistant/base`) — it's musl and cannot run this Debian/PHP stack.
 - **s6 supervises all three services:**
@@ -398,8 +399,8 @@ image or the musl-lib copy starts breaking across Meilisearch upgrades.
    `FPM initialization failed`. The Dockerfile appends `user = www-data` /
    `group = www-data` to `docker-php-serversideup-pool.conf` to fix this (see
    serversideup/docker-php #533). This can resurface if a base **patch** bump (the
-   pinned `server` minor tag floats on patch) renames/relocates that pool file — the smoke
-   test's API health check is the guard.
+   pinned `server` patch tag arrives via a Renovate PR) renames/relocates that pool
+   file — the smoke test's API health check is the guard.
 2. **Meilisearch on aarch64.** VERIFIED on `meilisearch 1.15.2`: the copied binary
    execs and serves on aarch64 and amd64 with its musl deps (fix #2 above).
    **Re-verify after each Meilisearch minor bump** — the musl-lib copy paths
