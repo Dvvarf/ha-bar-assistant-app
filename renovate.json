@@ -6,6 +6,7 @@
   ],
   "timezone": "UTC",
   "labels": ["dependencies"],
+  "schedule": ["before 6am on monday"],
   "packageRules": [
     {
       "description": "Group GitHub Actions bumps together.",
@@ -39,6 +40,11 @@
       ],
       "matchUpdateTypes": ["patch"],
       "enabled": false
+    },
+    {
+      "description": "Collect every update into ONE grouped PR per weekly run (see top-level `schedule`). Kept LAST so its groupName wins for all deps (Renovate applies matching rules in order, last write wins), funneling GitHub Actions, the upstream images, and everything else config:recommended tracks into a single branch/PR. The per-dep labels and the upstream version-bump warning above still apply -- addLabels/prBodyNotes append across matching rules -- so a coupled upstream MINOR/MAJOR move stays flagged (`needs-version-bump`) even inside the combined PR.",
+      "matchPackageNames": ["*"],
+      "groupName": "weekly dependencies"
     }
   ],
   "customManagers": [
