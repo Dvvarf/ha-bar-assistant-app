@@ -1,86 +1,108 @@
 name: Bump packaging revision
 
-# After a PR merges into main, auto-increment the <pkg> field (5th part) of the
-# add-on version -- in BOTH config.yaml `version:` and the Dockerfile
-# io.hass.version LABEL, and prepend a matching CHANGELOG.md entry -- but ONLY
-# when the merge changed the built image and
-# did NOT move an upstream major/minor. Upstream major/minor moves set the
-# leading version fields by hand in the PR (the needs-version-bump Renovate label
-# prompts this, and scripts/check-version-sync.sh enforces the coupling), so this
-# job must not bump on top of them. No tag or release is created here --
-# publish.yaml still fires only on a pushed version tag.
+# Auto-increment the <pkg> field (5th part) of the add-on version -- in BOTH
+# config.yaml `version:` and the Dockerfile io.hass.version LABEL -- and prepend
+# a matching CHANGELOG.md entry, by committing the bump INTO the open PR (not to
+# main). main is protected and github-actions[bot] cannot bypass it, so the bump
+# rides along in the PR and lands through the normal protected merge; nothing
+# pushes to main directly.
 #
-# Why trigger on pull_request:closed rather than push: this job's own bump is a
-# direct push to main, and a push from the default GITHUB_TOKEN triggers no
-# further workflows -- so it can never re-trigger this workflow. No loop.
+# The commit is pushed with a GitHub App token (not the default GITHUB_TOKEN) on
+# purpose: a push by GITHUB_TOKEN would NOT re-trigger the required PR checks, so
+# they would go stale and block the merge. An App-token push is treated as a
+# normal push, so lint/CI re-run on the bump commit and the PR stays mergeable.
+#
+# It runs only when the PR is safe and warrants a bump:
+#   * check-version-sync passes on the PR head -- if it fails, an upstream
+#     major/minor moved and the leading version fields must be set by hand
+#     (the needs-version-bump Renovate label prompts this); we skip.
+#   * the PR has not already changed the version vs its base (idempotent: our own
+#     bump makes head != base, so the re-run this push triggers is a no-op).
+#   * an image/manifest file actually changed (docs/tests/workflows never bump).
+# No tag or release is created here -- publish.yaml still fires only on a tag.
 
 on:
   pull_request:
-    types: [closed]
+    types: [opened, synchronize, reopened]
     branches: [main]
 
-# Serialize bumps so two PRs merging back-to-back can't race on the counter.
+# One run per PR; a newer push supersedes an in-flight run.
 concurrency:
-  group: version-bump
-  cancel-in-progress: false
+  group: version-bump-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   bump:
-    name: Bump <pkg> on image-affecting merges
-    # Only merged PRs (a closed-but-not-merged PR fires the same event).
-    if: github.event.pull_request.merged == true
+    name: Bump <pkg> in the PR
+    # Same-repo branches only: fork PRs can't read the App secrets anyway, and we
+    # never want to push to a fork.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
+      - name: Mint a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.SUPPORT_APP_ID }}
+          private-key: ${{ secrets.SUPPORT_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v7
         with:
-          ref: main
-          # Need the merge commit's first parent (previous main tip) to compare
-          # versions and diff the changed files, so fetch full history.
+          # Check out the PR branch itself (not the merge ref) and push back to
+          # it. The App token makes the eventual push re-trigger CI.
+          token: ${{ steps.app-token.outputs.token }}
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
       - name: Decide whether to bump, and do it
         env:
-          SHA: ${{ github.event.pull_request.merge_commit_sha }}
-          # Passed as env (not inlined as ${{ }}) so an untrusted PR title can't
-          # be interpreted as shell.
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
         run: |
           set -euo pipefail
 
-          # Previous main state = first parent of the merge/squash commit. Works
-          # for merge commits (^1 == main's prior tip), squash and rebase merges
-          # (parent == prior tip) alike.
-          prev="$(git rev-parse "${SHA}^" 2>/dev/null || true)"
-          if [ -z "$prev" ]; then
-            echo "Could not resolve the merge commit's parent; skipping."; exit 0
+          # If the version/LABEL/upstream-tag coupling doesn't hold on the PR
+          # head, an upstream major/minor moved and the leading version fields
+          # still need to be set by hand -- not a job for a <pkg> bump. Skip and
+          # let the failing guard + needs-version-bump label prompt the human.
+          if ! bash scripts/check-version-sync.sh >/dev/null 2>&1; then
+            echo "check-version-sync fails on the PR head; a major/minor bump must be set by hand. Skipping."
+            exit 0
           fi
+
+          # Base = merge-base of main and this branch (the PR's true starting
+          # point, robust to main advancing while the PR is open).
+          git fetch --no-tags origin main
+          base="$(git merge-base origin/main HEAD)"
 
           ver_at() {  # ver_at <ref> -> the version string in config.yaml at <ref>
             git show "$1:bar-assistant/config.yaml" 2>/dev/null \
               | grep -E '^version:' | head -1 \
               | sed -E 's/^version:[[:space:]]*"?([^"]+)"?[[:space:]]*$/\1/'
           }
-          prev_ver="$(ver_at "$prev")"
-          curr_ver="$(ver_at "$SHA")"
-          echo "prev main version: ${prev_ver:-<none>}"
-          echo "curr main version: ${curr_ver:-<none>}"
+          base_ver="$(ver_at "$base")"
+          head_ver="$(ver_at HEAD)"
+          echo "base version: ${base_ver:-<none>}"
+          echo "head version: ${head_ver:-<none>}"
 
-          # If the leading four fields (BA/SR major.minor) changed, the PR already
-          # moved an upstream major/minor and set the version by hand (pkg reset
-          # to 0) -- do NOT bump on top of that.
-          if [ -n "$prev_ver" ] && [ "${prev_ver%.*}" != "${curr_ver%.*}" ]; then
-            echo "Upstream major/minor moved (${prev_ver%.*} -> ${curr_ver%.*}); version handled in the PR. Skipping."
+          # The PR already changed the version (a human set it, or a previous run
+          # of this job already bumped) -- don't touch it again. This is what
+          # makes the job idempotent against the push it triggers below.
+          if [ "$head_ver" != "$base_ver" ]; then
+            echo "Version already changed in this PR (${base_ver} -> ${head_ver}); nothing to do."
             exit 0
           fi
 
           # Only bump when a file that defines the built image or the add-on
           # manifest changed. Docs, tests, workflows and renovate.json don't
           # change what ships, so they never bump <pkg>.
-          changed="$(git diff --name-only "$prev" "$SHA")"
+          changed="$(git diff --name-only "$base" HEAD)"
           echo "changed files:"; printf '%s\n' "$changed" | sed 's/^/  /'
           if ! printf '%s\n' "$changed" \
                | grep -qE '^bar-assistant/(Dockerfile|config\.yaml|apparmor\.txt|translations/)'; then
@@ -89,7 +111,7 @@ jobs:
           fi
 
           # Build the changelog body: one bullet per upstream image whose pinned
-          # tag moved in this merge; a generic line if an image/manifest file
+          # tag moved in this PR; a generic line if an image/manifest file
           # changed without an upstream tag move.
           tag_at() {  # tag_at <ref> <grep-regex> -> the tag after the last ':'
             git show "$1:bar-assistant/Dockerfile" 2>/dev/null \
@@ -108,7 +130,7 @@ jobs:
           )
           for entry in "${images[@]}"; do
             name="${entry%%|*}"; re="${entry#*|}"
-            old="$(tag_at "$prev" "$re")"; new="$(tag_at "$SHA" "$re")"
+            old="$(tag_at "$base" "$re")"; new="$(tag_at HEAD "$re")"
             if [ -n "$old" ] && [ -n "$new" ] && [ "$old" != "$new" ]; then
               add_line "Update bundled ${name} from ${old} to ${new}."
             fi
@@ -124,14 +146,10 @@ jobs:
             exit 0
           fi
 
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name  "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
           git add bar-assistant/config.yaml bar-assistant/Dockerfile bar-assistant/CHANGELOG.md
           git commit \
-            -m "Bump packaging revision to ${new_ver} [skip ci]" \
-            -m "Auto-bump of <pkg> after merging PR #${PR_NUMBER} (${PR_TITLE}), which changed the built image without an upstream major/minor move."
-
-          # concurrency serializes bumps, but rebase onto the latest tip anyway
-          # in case main advanced between checkout and push.
-          git pull --rebase origin main
-          git push origin HEAD:main
+            -m "Bump packaging revision to ${new_ver}" \
+            -m "Auto-bump of <pkg> for PR #${PR_NUMBER} (${PR_TITLE}): an image/manifest change with no upstream major/minor move."
+          git push origin "HEAD:${HEAD_REF}"
