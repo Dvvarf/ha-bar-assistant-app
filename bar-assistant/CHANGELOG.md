@@ -5,11 +5,11 @@ All notable changes to this add-on are documented here. Versions follow the
 
 ## 5.15.4.15.4
 
-- Update bundled Meilisearch from v1.48 to v1.49. The engine is pinned to its
-  minor tag (`getmeili/meilisearch:v1.49`), so this bumps only the packaging
+- Update bundled Meilisearch from v1.48 to v1.50. The engine is pinned to its
+  minor tag (`getmeili/meilisearch:v1.50`), so this bumps only the packaging
   revision — Meilisearch's `major.minor` is not embedded in the add-on version.
   Meilisearch's on-disk database format can change on a minor bump, so an
-  existing search index built by v1.48 is incompatible with the v1.49 engine;
+  existing search index built by v1.48 is incompatible with the v1.50 engine;
   the version guard added in the previous release handles this automatically:
   `ba-prep` purges the stale Meilisearch data dir in the `prep` oneshot (before
   the engine starts) and the `meili-reindex` oneshot rebuilds the index from the
