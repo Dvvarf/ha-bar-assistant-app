@@ -2,7 +2,8 @@ name: Bump packaging revision
 
 # After a PR merges into main, auto-increment the <pkg> field (5th part) of the
 # add-on version -- in BOTH config.yaml `version:` and the Dockerfile
-# io.hass.version LABEL -- but ONLY when the merge changed the built image and
+# io.hass.version LABEL, and prepend a matching CHANGELOG.md entry -- but ONLY
+# when the merge changed the built image and
 # did NOT move an upstream major/minor. Upstream major/minor moves set the
 # leading version fields by hand in the PR (the needs-version-bump Renovate label
 # prompts this, and scripts/check-version-sync.sh enforces the coupling), so this
@@ -87,8 +88,36 @@ jobs:
             exit 0
           fi
 
+          # Build the changelog body: one bullet per upstream image whose pinned
+          # tag moved in this merge; a generic line if an image/manifest file
+          # changed without an upstream tag move.
+          tag_at() {  # tag_at <ref> <grep-regex> -> the tag after the last ':'
+            git show "$1:bar-assistant/Dockerfile" 2>/dev/null \
+              | grep -oE "$2" | head -1 | sed -E 's|.*:||'
+          }
+          body=""
+          add_line() {
+            if [ -n "$body" ]; then body="${body}"$'\n'"- $1"; else body="- $1"; fi
+          }
+          # name|grep-regex for each pinned upstream image. A for-loop over an
+          # array (not a piped while) keeps $body in the current shell.
+          images=(
+            "Bar Assistant server|barassistant/server:[0-9]+\.[0-9]+\.[0-9]+"
+            "Salt Rim|barassistant/salt-rim:[0-9]+\.[0-9]+\.[0-9]+"
+            "Meilisearch|getmeili/meilisearch:v[0-9]+\.[0-9]+\.[0-9]+"
+          )
+          for entry in "${images[@]}"; do
+            name="${entry%%|*}"; re="${entry#*|}"
+            old="$(tag_at "$prev" "$re")"; new="$(tag_at "$SHA" "$re")"
+            if [ -n "$old" ] && [ -n "$new" ] && [ "$old" != "$new" ]; then
+              add_line "Update bundled ${name} from ${old} to ${new}."
+            fi
+          done
+          [ -n "$body" ] || add_line "Packaging update (PR #${PR_NUMBER}: ${PR_TITLE})."
+
           new_ver="$(bash scripts/bump-pkg.sh)"
-          echo "Bumped to ${new_ver}."
+          printf '%s\n' "$body" | bash scripts/changelog-prepend.sh "$new_ver"
+          echo "Bumped to ${new_ver} with changelog entry:"; printf '%s\n' "$body"
 
           if git diff --quiet; then
             echo "No net change after bump; skipping commit."
@@ -97,7 +126,7 @@ jobs:
 
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bar-assistant/config.yaml bar-assistant/Dockerfile
+          git add bar-assistant/config.yaml bar-assistant/Dockerfile bar-assistant/CHANGELOG.md
           git commit \
             -m "Bump packaging revision to ${new_ver} [skip ci]" \
             -m "Auto-bump of <pkg> after merging PR #${PR_NUMBER} (${PR_TITLE}), which changed the built image without an upstream major/minor move."
