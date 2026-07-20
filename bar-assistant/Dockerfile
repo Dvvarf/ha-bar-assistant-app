@@ -23,8 +23,8 @@
 # when building standalone). Declared after a FROM it would be stage-scoped
 # and resolve blank in `FROM ${BUILD_FROM}`.
 #
-# Upstreams are pinned to their MINOR tag (server:5.15, salt-rim:4.15,
-# meilisearch:v1.49), not the floating major (:v5 / :v4). This still tracks
+# Upstreams are pinned to their MINOR tag (the concrete tags live on the
+# ARG/FROM lines just below), not the floating major. This still tracks
 # patch releases automatically, but fixes the major.minor at build time so the
 # add-on version can honestly mirror it -- the add-on version is
 # <BA_major>.<BA_minor>.<SR_major>.<SR_minor>.<pkg> (see "Versioning" in CLAUDE.md).

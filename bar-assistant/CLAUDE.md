@@ -47,8 +47,8 @@ build+smoke, `publish.yaml` → GHCR on a release tag).
 
 - `run.sh` — not used; s6 supervises all three services directly.
 - `build.yaml` — obsolete since Supervisor 2026.04.0 (the legacy builder no longer
-  reads it). The base image is pinned via `ARG BUILD_FROM=barassistant/server:5.15`
-  in the Dockerfile instead (minor tag — see "Versioning" below).
+  reads it). The base image is pinned via the `ARG BUILD_FROM` default in the
+  Dockerfile instead (`barassistant/server` at its minor tag — see "Versioning" below).
 
 `translations/en.yaml` — localizes the option **names/descriptions** (and the
 published port) shown in the add-on Configuration tab. Keys mirror `config.yaml`
@@ -89,8 +89,9 @@ section left-to-right, so ordering stays monotonic
 (`5.15.4.15.0` < `5.15.4.15.1` < `5.15.4.16.0` < `5.16.0.0.0.0`). This is **not**
 strict 3-part semver — that's fine; AwesomeVersion handles arbitrary dotted lengths.
 
-**Why the upstreams are pinned to MINOR tags** (`server:5.15`, `salt-rim:4.15`,
-`meilisearch:v1.49`) rather than floating majors: the embedded `major.minor` fields
+**Why the upstreams are pinned to MINOR tags** (`server`, `salt-rim`,
+`meilisearch` — the concrete tags live in the Dockerfile) rather than floating
+majors: the embedded `major.minor` fields
 can only honestly mirror the upstreams if they're fixed at build time. Minor tags
 still float on *patch*, so security/patch updates still flow in automatically — they
 just land as a `<pkg>` bump here.
@@ -107,15 +108,16 @@ matching FROM/`BUILD_FROM` tag in the Dockerfile):
 | Upstream **patch** (server `5.15.2→3`, salt-rim, meilisearch) | bump `<pkg>`: `…​.1` (tags float on patch, so often just a rebuild). |
 | This image only (Dockerfile / s6 / config.yaml) | bump `<pkg>`: `…​.1` |
 
-Current `5.15.4.15.1` = server 5.15 + salt-rim 4.15; `.0` was the first packaged
-release, `.1` added the optional AI/Redis/general add-on options (config + ba-prep
-only, no upstream move).
+The `<pkg>` field is where non-major/minor changes accumulate: e.g. `.0` was the
+first packaged release and `.1` added the optional AI/Redis/general add-on options
+(config + ba-prep only, no upstream move). The live version is whatever
+`config.yaml` `version:` says — this doc doesn't restate it.
 
 ---
 
 ## How it runs (architecture)
 
-- **Base image:** `barassistant/server:5.15` (Debian/glibc + serversideup PHP-FPM +
+- **Base image:** `barassistant/server` at its pinned minor tag (Debian/glibc + serversideup PHP-FPM +
   nginx + s6-overlay v3). **Do not** try to rebase on the Alpine HA base
   (`ghcr.io/home-assistant/base`) — it's musl and cannot run this Debian/PHP stack.
 - **s6 supervises all three services:**
@@ -396,13 +398,13 @@ image or the musl-lib copy starts breaking across Meilisearch upgrades.
    `FPM initialization failed`. The Dockerfile appends `user = www-data` /
    `group = www-data` to `docker-php-serversideup-pool.conf` to fix this (see
    serversideup/docker-php #533). This can resurface if a base **patch** bump (the
-   `server:5.15` tag floats on patch) renames/relocates that pool file — the smoke
+   pinned `server` minor tag floats on patch) renames/relocates that pool file — the smoke
    test's API health check is the guard.
 2. **Meilisearch on aarch64.** VERIFIED on `meilisearch 1.15.2`: the copied binary
    execs and serves on aarch64 and amd64 with its musl deps (fix #2 above).
-   **Re-verify after the v1.49 bump** — the musl-lib copy paths (`/bin/meilisearch`,
-   `/lib/ld-musl-*.so.1`, `/usr/lib/libgcc_s.so.1`) are unverified across that span;
-   a real build + smoke on both arches is the check.
+   **Re-verify after each Meilisearch minor bump** — the musl-lib copy paths
+   (`/bin/meilisearch`, `/lib/ld-musl-*.so.1`, `/usr/lib/libgcc_s.so.1`) are
+   unverified across the jump; a real build + smoke on both arches is the check.
 3. **First-boot options timing.** Bar Assistant's one-time setup may run before
    option-derived env is fully in place. **After changing add-on options, restart
    the add-on** so keys/URLs line up. (Mitigated by fix #6's ordering, but the s6
