@@ -32,9 +32,9 @@
 # "Versioning" in CLAUDE.md). When an upstream moves, bump the matching tag here
 # AND the version: a major/minor move updates the matching field, a patch move
 # bumps <pkg>.
-ARG BUILD_FROM=barassistant/server:5.15.3
+ARG BUILD_FROM=barassistant/server:5.15.4
 
-FROM getmeili/meilisearch:v1.50.0 AS meili
+FROM getmeili/meilisearch:v1.53.2 AS meili
 FROM barassistant/salt-rim:4.15.0 AS saltrim
 
 FROM ${BUILD_FROM}
